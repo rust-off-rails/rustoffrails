@@ -1,16 +1,41 @@
 # Changelog
 
+Each release section below has four parts, in this order: **What's new** (the gist), **Breaking changes** (what an existing app must act on), **Upgrading** (where the steps are) and **Full list of changes** (every entry, with the App migration steps written for agents).
+
 Each entry lists convention changes and what an existing app must do about them. `/offrails:upgrade` reads this file, so write the **App migration** notes as instructions for an agent.
 
 ## 0.7.2 (2026-10-18)
 
-**Upgrading an app to 0.7.2, in order** (each step's Detect/Converge/Prove is in the entry it names below; [upgrade](generators/upgrade.md) is the whole procedure). `$FW` is the new framework.
+### What's new
+
+- **`cargo offrails verify`** runs the Definition of Done in parallel in one command. `--fast` (after every change) runs fmt, clippy and the SQLite and Postgres suites at the same time; `--full` (once, at the end) adds coverage, `cargo deny`, gitleaks and the other checks. A bare app's loop after a one-line change went from 140 s to about 6 s.
+- **Generators:** `cargo offrails generate <kind>` (`g`) writes migrations, models, CRUD resources, controllers, pages, APIs, jobs, mailers, channels and tests that follow the guides and come with their tests. `cargo offrails destroy` (`d`) removes exactly what was generated and is still unchanged.
+- **`cargo offrails update-part`** brings a newer version of an installed part into the app with a three-way merge: clean changes apply, overlapping edits get conflict markers, and the app's own changes are never silently overwritten.
+- **Faster Postgres tests:** the suite migrates once into a template database and reuses locked slot databases reset before each test, instead of creating and migrating a database per test.
+- **A browser smoke for boosted navigation** catches page JavaScript that works on a fresh load but is dead after a boosted link. Page scripts now load from the layout and bind by delegation.
+- **Template speed-ups:** one CI test job instead of two, a cached Docker dependency layer, and a cached development CSS check.
+
+### Breaking changes
+
+Nothing is required to keep an existing app working. Before using the new tools:
+
+- Generators need the `// samples:` anchors in the shared files; a generator that lacks one refuses and names it.
+- The route-sweep tests (`smoke_test.rs`, `security_test.rs`) must send each route's own method before the first `cargo offrails g api`.
+- Parts updated to this release load their page scripts at a new `samples: app head` anchor in the layout.
+- `split-debuginfo` left `[profile.dev]` in the template; an app built on Windows must remove it too.
+
+### Upgrading
+
+Follow the ordered list below; each step's Detect/Converge/Prove is in the entry it names under Full list of changes, and [upgrade](generators/upgrade.md) is the whole procedure. `$FW` is the new framework.
+
 1. **Parts first, before re-vendoring:** `update-part` merges against the part as installed in `.offrails/`, so run it while `.offrails/` is still the old release: `cargo offrails update-part <each installed part> --framework "$FW" --dry-run`, then without `--dry-run`. Resolve any `<<<<<<<` markers, then `cargo fmt --all` and `cargo run -q -- db migrate`. (An app on 0.7.1 or older has no `update-part` yet: run the new release's, `cargo run -q --manifest-path "$FW/tools/offrails-gen/Cargo.toml" -- update-part <part>… --framework "$FW" --app .`.)
 2. **Re-vendor:** `offrails-gen vendor --framework "$FW"`. `cargo offrails verify`, `generate`, `destroy` and `update-part` now work.
 3. **Generator anchors** (Generators → App migration): add every missing `// samples:` anchor. A generator that needs a missing one refuses and names it, so this can wait until the first `generate`.
 4. **Route sweeps send each route's own method** (same entry): required before the first `cargo offrails g api`.
 5. **Optional speed-ups** (Fast loop → App migration): Postgres test slots, the CSS check cache, the `split-debuginfo` move (needed for Windows builds), and the one-job CI.
 6. **Prove it:** `cargo offrails verify --full` is green on SQLite and Postgres, `sh .offrails/tools/offrails-check` reports 0 errors, and `docs/decisions.md` has `YYYY-MM-DD: upgraded to framework 0.7.2` plus the generators line.
+
+### Full list of changes
 
 - **A fast loop: `cargo offrails verify`** ([workflow](workflow.md#definition-of-done)). A human, after a 41-minute agent build and 4+ minute CI runs: "we need CI to run in 10 seconds or less, can't we parallelize or something". The Definition of Done ran sequentially (fmt, clippy, SQLite suite, Postgres suite, coverage, deny, gitleaks, browser smokes), and the docs had agents run all of it after every change. Now one cross-platform command (in `offrails-gen`, so `cargo offrails verify` works in every template app) runs it in parallel:
   - `--fast` (default; after every slice): `cargo fmt --check`, the CSS build (htmx), clippy `-D warnings` in its own target dir (`target/clippy`, so it compiles while the tests build), the test binaries once, then the SQLite and Postgres suites **at the same time** (nextest; Postgres runs the integration tests, since unit tests never read `TEST_DATABASE_URL`). One line per step with its time and test counts, the tail of each failure, logs in `target/verify/`, non-zero exit on any failure. Postgres comes from `TEST_DATABASE_URL` (environment or `.env`) or the compose URL when `localhost:${DB_PORT:-5432}` answers; otherwise it says **skipped**.
@@ -70,6 +95,25 @@ Each entry lists convention changes and what an existing app must do about them.
 
 ## 0.7.1 (2026-10-17)
 
+### What's new
+
+- **New apps start from a tested template.** `offrails-gen new` copies a complete, compiling htmx app (the whole kernel, tests, CI, Dockerfile and compose) instead of an agent retyping it from Markdown. A fresh app is green on SQLite and Postgres in 2 min 53 s, most of it the first compile.
+- **Parts:** the mailer, dev mailbox, jobs, jobs dashboard, sign-in methods, realtime and dev dashboard ship as installable parts. The agent proposes the ones the product needs, and `cargo offrails add-part <name>` adds one later (it changes nothing if an anchor is missing). `cargo offrails list-parts` shows what is installed.
+- **Cross-platform tooling:** `offrails-gen` is a standard-library-only Rust tool, so `new`, `add-part`, `list-parts` and `vendor` run the same on Linux, macOS and Windows.
+- **Lean memory defaults:** 2 worker threads, 16 blocking threads and a smaller SQLite pool and cache. A bare release build uses 15 MiB after 1000 requests, and CI fails a build over its memory budget.
+- **Tracing spans by default** on template actions, so the dev dashboard's traces work out of the box.
+- **Upgrades can diff the old template against the new one** to see every kernel change in a release.
+
+### Breaking changes
+
+None. Existing apps keep working; the template alias, the memory settings and the parts are optional to adopt.
+
+### Upgrading
+
+Optional: the **App migration** note at the end of the first entry below (compare with the template, add the `cargo offrails` alias, the memory settings). The whole procedure is in [upgrade](generators/upgrade.md).
+
+### Full list of changes
+
 - **New apps start from a tested template, not from Markdown retyped token by token** ([template](template/README.md), [new](generators/new.md)). The framework now ships its app skeleton as real files: `template/app/` is a complete, compiling app (htmx) with the whole kernel (config, errors, the security header matrix and CSP, CSRF, cookies and flash, the development Host allowlist and 127.0.0.1 bind, rate limiting, log and error-text redaction, SQLite + Postgres pools with per-test Postgres databases, introspection, `/dev` with the pending-migrations guard, the theme switch, direct TLS), the layout, error pages, Tailwind, `bin/`, the migration crate, `tests/app/` with every kernel suite, `deny.toml`, CI, Dockerfile and compose, and every `samples:` anchor. It was the samples repo's `host/`, proven on both databases, and the framework's from now on. Building the skeleton from 0.7.0's Markdown cost an agent 50+ minutes; generating it takes seconds, and a fresh app is green on SQLite and Postgres in 2 min 53 s from the generator's start (5 min 46 s with every part; macOS, Apple silicon, 8 cores, cold target dir, warm crates.io cache), most of it the first compile. The human's decision: "add the full skeleton as templates… we are not a codeless framework anymore but it's fine." The guides stay the spec for *why*; [doctrine §7](doctrine.md#7-markdown-is-the-spec-the-template-is-its-rendering) is rewritten to match: agents copy the template, adapt it and own it; humans still write no code.
   - **How:** after the interview, `cargo run -q --manifest-path "$FW/tools/offrails-gen/Cargo.toml" --target-dir <dir>/target/offrails-gen -- new <dir> <crate_name> "<Display Name>" --pitch "<line>" --parts <a,b>` (or `sh "$FW/tools/new-app.sh" …`). It copies the template, renames its tokens (`offrails_app`, `offrails-app`, `Offrails App`), vendors `.offrails/`, writes `AGENTS.md` and `product/README.md` from the blueprints, adds the parts, runs `cargo fmt` and `git init`s.
   - **Parts, proposed by default.** The base is lean: no job queue, mailer, accounts or realtime. Those are **parts**, the samples from [rust-off-rails/samples](https://github.com/rust-off-rails/samples) vendored into the release (`template/parts/`). The agent proposes the ones the product implies, using a decision table ([template → choosing parts](template/README.md#choosing-parts): `dev-dashboard` for every app, `mailer` + `dev-mailbox` for email, `jobs` + `jobs-dashboard` for slow or scheduled work, `auth-core` + a method for sign-in, `realtime` for pushed updates), shows the human the samples link (screenshots of every screen), and the human confirms or opts out. This flips 0.7.0's head start, whose recommended answer was "build from the guides": a real run of a blog skipped every sample because of it.
@@ -89,6 +133,28 @@ Each entry lists convention changes and what an existing app must do about them.
   - *Optional, memory:* add `worker_threads`/`blocking_threads` to `Config` and build the runtime from them as the template's `main.rs` does; set the SQLite `cache_size` pragma and idle timeout in `kernel/db.rs`. Prove it with `sh .offrails/tools/ci/memory-budget.sh . <budget>` (Linux, macOS).
 
 ## 0.7.0 (2026-10-16)
+
+### What's new
+
+- **Security fix: development is reachable only from this machine.** `serve` binds `127.0.0.1` in development (`APP_BIND`) and answers only local and configured host names (`APP_ALLOWED_HOSTS`), so another device on the network or a DNS-rebinding page can no longer open `/dev` (where the mailbox shows sign-in links). A new `offrails-check [bind]` rule enforces it.
+- **Signing in replaces the previous session:** the old session in that browser is destroyed and its sockets and streams are closed.
+- **Emailed links are limited per address,** with a cap of 20 emails per address per day for login and reset links.
+- **Unverified accounts can't be pre-hijacked:** `users.email_verified_at` stays empty until a link sent to the address is used, and that first use drops every session, API token and pending link set up before it.
+- **Less leakage:** job errors are stored redacted, `Config`'s `Debug` prints only settings that can never hold a secret, and presence labels never come from an email address.
+- **Samples:** optional, tested reference code for the mailer, jobs, sign-in, realtime and a dev dashboard in [rust-off-rails/samples](https://github.com/rust-off-rails/samples). Upgrading offers them per area.
+
+### Breaking changes
+
+- **Every app:** the development server must bind `APP_BIND` (default `127.0.0.1` in development) and check `Host`; `offrails-check` fails with `[bind]` until it does. A dev container, tunnel or LAN workflow now needs `APP_BIND=0.0.0.0` plus `APP_ALLOWED_HOSTS`.
+- **Apps with accounts:** sign-in destroys the old session; reset and login links get per-address and daily limits; apps with signup (or both passwords and login links) add a nullable `email_verified_at` column, and a user's first reset after the upgrade also revokes their API tokens.
+- **Apps with a manual theme toggle:** the cookie is renamed from `theme` to `offrails_theme` (read the old one for one release).
+- **Every app** also ports the security fixes: job errors stored redacted, `Config`'s `Debug` as an allowlist, and (apps with channels) presence labels that don't come from the email.
+
+### Upgrading
+
+Do the first entry's **App migration** (the development bind and Host check) first, then each entry's own App migration below. The procedure, including step 7b that offers the samples, is in [upgrade](generators/upgrade.md).
+
+### Full list of changes
 
 - **Security fix (P0): development was reachable from the LAN and through DNS rebinding.** An independent review of generated apps found that `serve` bound `0.0.0.0` in every environment ([cli](cli.md) said so) and nothing checked `Host`. `/dev` has no login: the mailbox shows every magic link and reset link, introspection shows the app's state, and `/admin/jobs` is open in development. So anyone on the same Wi-Fi could open `http://<your-ip>:3000/dev/mailbox` and sign in as you. A page on `evil.example` that re-points its own name at `127.0.0.1` (DNS rebinding) reached it too: the browser sends `Host: evil.example` **same-origin**, so CORS doesn't apply, and Fetch Metadata says `same-origin`, so the `CsrfLayer` lets its POSTs through. Now, in development only ([security](guides/security.md#development-is-this-machine-only), new non-negotiable 13):
   - `serve` binds `config.bind`: `APP_BIND`, default **`127.0.0.1` in development** and `0.0.0.0` in production. A dev container sets `APP_BIND=0.0.0.0` ([config](guides/config.md#where-serve-listens-app_bind-app_allowed_hosts-and-the-unset-app_env-warning), [deployment](guides/deployment.md#docker-compose-the-whole-app-locally)).
@@ -126,6 +192,26 @@ Each entry lists convention changes and what an existing app must do about them.
 
 ## 0.6.2 (2026-10-13)
 
+### What's new
+
+- **`offrails-check` catches 32-bit ids** (`[ids]`), which pass on SQLite and break every Postgres write, and test suites that never run on Postgres (`[postgres]`).
+- **`bin/dev` manages its own process:** it writes a PID file per server, refuses to start twice on one port, and on exit stops only its own process tree. Agents stop a server with `kill "$(cat storage/pids/…)"`.
+- **Seeds can be re-run** after a half-failed run: one transaction, each record found or created by a natural key.
+- **WebSockets sized for many sockets:** smaller per-socket buffers took 10,000 sockets from 1.37 GB to 160–225 MB.
+- **Whole files in the guides** for `kernel/tls.rs` and `kernel/introspect.rs`, and a pattern for live boards over a channel (snapshot, patches, reducer).
+- **Parallel helpers only after the skeleton compiles,** each with its own files.
+
+### Breaking changes
+
+- `offrails-check` fails on the new `[ids]` and `[postgres]` rules: an app with 32-bit ids adds a widening migration (never edits the applied ones), and `tests/app/support.rs` must read `TEST_DATABASE_URL`.
+- `bin/dev` no longer uses `trap 'kill 0'` (it could kill the caller's shell); copy the new top of the script.
+
+### Upgrading
+
+Each entry's **App migration** note below, then [upgrade](generators/upgrade.md). This release also corrects the 0.6.1 steps in place.
+
+### Full list of changes
+
 - **Parallel helpers only after the skeleton compiles** ([workflow](workflow.md#parallel-helpers-subagents)). A real migration (Fizzy → Rust off Rails, run in opencode) had three helpers writing the jobs executor, the jobs dashboard and the dev mailbox into one uncompiled crate at once. Each tripped over the others' half-written files, and two built stub crates in `/tmp` just to type-check their own part. Now: the coordinator builds the skeleton alone, up to the first green `cargo check` and the baseline commit. After that it runs at most one helper per vertical slice, with each helper's files listed. Shared registries (`routes.rs`, `mod.rs` files, `migration/src/lib.rs`, `Cargo.toml`) stay with the coordinator, and a helper blocked by another's file stops and reports. **App migration:** docs only. *Detect:* the app's `AGENTS.md` or any decision line telling agents to fan out helpers on code before the tree compiles. *Converge:* drop it and follow the workflow rule.
 - **Fixed (P0): 32-bit ids passed on SQLite and broke every Postgres write.** A peer's Kanban (0.3.0 → 0.6.1) used `.integer()` for ids and foreign keys. SQLite's `INTEGER` is 64-bit, so the suite was green; on Postgres the columns were `INT4` and every write that returned an id was a 500. Its tests had never run on Postgres: `support.rs` hard-coded `sqlite::memory:`. Two new `offrails-check` rules, with fixtures: **`[ids]`** fails an `id`/`*_id` column defined with `integer`/`small_integer`/`tiny_integer` (helper or `ColumnDef` chain, across lines, `Alias::new("x_id")` too) or `pk_auto`, and an `i32`/`i16` id field in `src/`; **`[postgres]`** fails a `tests/app/support.rs` that never reads `TEST_DATABASE_URL`. A migration repaired by a later one carries `// offrails-check: ids widened in m<…>` ([migrations](guides/migrations.md#ids-are-64-bit), with the `widen_ids` template, its SQL verified on Postgres 18). **App migration:** *Detect:* `sh .offrails/tools/offrails-check` prints `[ids]` or `[postgres]`. *Converge:* `[postgres]`: `TestApp::new` per [testing](guides/testing.md#database-per-test) first, then run the suite on Postgres and fix what it finds. `[ids]`: never edit the applied migrations; add `widen_ids` (Postgres only; `ALTER SEQUENCE … AS bigint` for `pk_auto` tables), put the waiver comment in each repaired file, change entity fields to `i64`, then `db rollback --steps 1 && db migrate` and the suite on both databases.
 - **Seeds retry after a half-failed run.** The same app's `seed_if_empty` returned early when any team existed, so a seed that failed after the first team never ran again. `tasks/seed.rs` now runs in one `kernel::db::begin` transaction and finds-or-creates each record by a natural key ([cli](cli.md#seeds); scaffold and new updated). **App migration:** *Detect:* `grep -nE 'count|is_empty|exists' src/tasks/seed.rs` gating the whole seed with an early return. *Converge:* one transaction, find-or-create per record; prove it by running `app db seed` twice (no change) and after deleting one seeded row (it comes back).
@@ -142,6 +228,29 @@ Each entry lists convention changes and what an existing app must do about them.
 - **README: "~50 Markdown files"**, not ~30 (27 guides, 15 root docs, 8 generators, 4 blueprints). **App migration:** none.
 
 ## 0.6.1 (2026-10-13)
+
+### What's new
+
+- **Sign-in over dev HTTPS works again:** development serves HTTPS only with a locally trusted (mkcert) certificate, and otherwise plain HTTP with a message saying why. `APP_DEV_HTTP_PORT` serves plain HTTP beside TLS.
+- **Dark mode that stays readable:** a palette, layout skeletons and components checked with axe in both color schemes, plus guard tests for unpaired colors and for stale compiled CSS (also shown as a development banner).
+- **Hot reload and introspection:** open tabs reload after an edit, and `/dev/introspect.json` and `app introspect` tell an agent the app's routes, config, migrations, jobs and realtime state.
+- **The `offrails` command is safe to script:** every subcommand answers `--help` without side effects, unknown flags exit 2, and `new` and `upgrade` never start an agent from a non-interactive shell without `--yes`.
+- **Realtime at scale** (5,000 watchers on one box): pub/sub per stream, live regions rendered once per version, a gate so re-fetches can't starve user requests, and overload answered with 503 and `Retry-After`.
+- **Rate limits never extend a lockout,** and `offrails-check` gains an `[env]` rule for variables missing from `.env.example`.
+
+### Breaking changes
+
+- `offrails new` and `offrails upgrade` in scripts or CI exit 3 without `--yes` (or `OFFRAILS_YES=1`).
+- `bin/dev-cert` no longer falls back to a self-signed certificate; without mkcert, development serves plain HTTP (or set `DEV_CERT_SELF_SIGNED=1`). Delete old certificates in `storage/dev-certs`.
+- A request timeout or an exhausted database pool answers 503 with `Retry-After`, not 408.
+- `offrails-check` fails on a missing `.env.example` variable (`[env]`) and on a bare `n/a` STRIDE row.
+- New settings `APP_SHUTDOWN_DRAIN_SECS` and `APP_DEV_HTTP_PORT`; development allows 1000 attempts per rate-limit window.
+
+### Upgrading
+
+The numbered **App migration** list (steps 1–16) at the end of this section, for 0.6.0 apps; older apps apply 0.6.0's steps first. The procedure is in [upgrade](generators/upgrade.md).
+
+### Full list of changes
 
 Fixes from a peer's Kanban on 0.6.0 (and its 5,000-watcher load test), from the website's upgrade to 0.6.0, and two agent-experience requests. Every app-facing fix is proven in the reference app (bookshelf) unless marked otherwise.
 
@@ -188,6 +297,28 @@ Fixes from a peer's Kanban on 0.6.0 (and its 5,000-watcher load test), from the 
 
 
 ## 0.6.0 (2026-10-13)
+
+### What's new
+
+- **Live pages no longer stall past about 6 tabs:** `serve` speaks HTTP/2 over direct TLS, and `bin/dev` serves HTTPS by default.
+- **`tools/offrails-check`** (`offrails check`): a script that fails on an inconsistent `AGENTS.md` header, uncited acceptance criteria, feature specs without a STRIDE table, missing tenancy suites and unscoped lookups. It is the first step of the Definition of Done and of CI.
+- **Tenancy enforced by the compiler and tests:** with accounts, model lookups take the actor (`find_for`, `all_for`, `destroy_for`), and every app with accounts gets `tenancy_test.rs` and `guard_test.rs`.
+- **Fixes from apps that shipped "green":** a user locked out at about 5 tabs (connection cap 8, now 128), pages loading without htmx, a fresh database crashing `serve`, and a logged-out stream redirecting instead of answering 401.
+- **`offrails upgrade --check --fw <dir>`** checks or upgrades against any release and exits 10 when an upgrade is due.
+- **Rules for weaker models:** a `NEVER` list in the app's `AGENTS.md`, a command for every Definition of Done item, and evidence before any retry, sleep or raised limit.
+
+### Breaking changes
+
+- Direct TLS: new `APP_TLS_CERT`/`APP_TLS_KEY` settings, `bin/dev-cert`, and `bin/dev` serving HTTPS unless `APP_TLS=off`.
+- Apps with accounts: raw model `find`/`destroy` become `pub(in crate::models)`, so handlers must move to the scoped functions (the compiler lists every caller), and the two tenancy suites are required.
+- `offrails-check` runs first in the Definition of Done and in CI, and fails until the app passes it.
+- A logged-out request to `/streams/…` answers 401, not 303 to the login page.
+
+### Upgrading
+
+The numbered **App migration** list (steps 1–14) after the entries, for 0.3.x, 0.4.x and 0.5.0 apps, plus the instant-navigation note at the end. The procedure is in [upgrade](generators/upgrade.md).
+
+### Full list of changes
 
 Hardening from a 0.3.0 Kanban built by another agent that shipped "green" with three P0 defects. The rule this release follows: **mechanical over prose**. Each fix is a command that proves it, a template, a compile error or a failing check.
 
@@ -237,6 +368,25 @@ From the website's upgrade to 0.5.0:
 
 ## 0.5.0 (2026-10-13)
 
+### What's new
+
+- **An accessibility gate:** axe-core (WCAG 2.2 AA) on every route, in light and dark, on desktop and mobile, with a required `a11y` CI job.
+- **Less for agents to read:** a two-page [`CHEATSHEET.md`](CHEATSHEET.md) is the first thing to load, and every guide and generator opens with a TL;DR.
+- **Robust live regions:** no leaking `EventSource`s, a `ping` heartbeat with a watchdog, `hx-sync`, a connection badge and one stream per page.
+- **Instant navigation for content sites** (optional): View Transitions, a CSS-only progress bar, a service worker and prefetch on intent.
+- **Repairing a migration:** the repair's `down` restores the earlier schema, so a full rollback still works.
+- rustoffrails.org runs on the framework, with a hosted read-only MCP server at https://rustoffrails.org/mcp.
+
+### Breaking changes
+
+None required. The docs now call the compose Postgres service `db`, so scripts that run `docker compose up -d postgres` should use `db`.
+
+### Upgrading
+
+The **App migration** notes at the end of this section: nothing required; apps with a UI add the accessibility suite, and apps with live regions apply the live-region fixes. The procedure is in [upgrade](generators/upgrade.md).
+
+### Full list of changes
+
 Learned from real apps built by other agents and from a real upgrade: an accessibility gate in both themes, robust live regions (from a Kanban built with opencode), a context diet for agents (`CHEATSHEET.md` + a TL;DR on every guide), instant navigation for content sites, and a migration repair convention. rustoffrails.org runs it, with a hosted read-only MCP server at https://rustoffrails.org/mcp.
 
 
@@ -259,9 +409,31 @@ Apps with live regions: *detect* `sse-connect` attributes changed from JS, live 
 
 ## 0.4.0 (2026-10-13)
 
+### What's new
+
+- **Realtime has its own wire protocol, offrails.v1:** typed channels, self-describing JSON frames and stable error codes, replacing the Phoenix v2 format.
+- **Nothing is lost while a tab is disconnected:** signals carry ids, pages render a cursor, and reconnects replay what was missed. Live regions also keep working after a boosted navigation.
+- **Automatic transport fallback:** WebSocket, then SSE + POST, then long-polling.
+- **Connection security:** logout, a password change or a revocation closes that session's sockets and streams at once; pushes are re-authorized, and each user has connection and join caps.
+- **Upgrade from any agent:** `offrails upgrade` launches Claude Code, opencode or Codex with the agent-neutral [upgrade](generators/upgrade.md) recipe, and vendoring uses anchored excludes from a release tag.
+- **Magic-link sign-in verified** by a fresh agent's build, with its doc findings fixed.
+
+### Breaking changes
+
+- **Apps with channels:** client and server must switch to offrails.v1 together; old clients get `bye` `protocol` and close 1002. Rooms become typed `In`/`Out` enums.
+- **Apps with SSE:** `Signal` gains an `id`, pages with `sse-connect` render a `?since=` cursor, and the sse extension moves from a page's head block into the layout.
+- New settings `APP_REALTIME_REVALIDATE_SECS` and `APP_REALTIME_TRANSPORTS`.
+- Smaller fixes to adopt: raw SQL in controllers and tasks moves into `kernel::db`, panics render the 500 page, the pending-migrations guard goes after the fallback, and `/dev/mailers` answers 301.
+
+### Upgrading
+
+The two numbered **App migration** lists below (realtime, steps 1–7; the Linkdrop fixes, steps 1–7) and the vendoring note. The procedure is in [upgrade](generators/upgrade.md).
+
+### Full list of changes
+
 Realtime gets its own wire protocol, **offrails.v1**: typed channels, sequence-based resume after downtime (WebSocket `since`, SSE `Last-Event-ID`), automatic fallback to SSE + POST and then long-polling, and connection security (logout or a password change closes that session's sockets and streams; per-user caps; re-authorized pushes). The security hardening was merged with it and re-verified end to end in the reference app (233 tests on Postgres, ZAP 0 warnings, cargo-deny, gitleaks, browser smoke). Apps can be upgraded from any agent with **`offrails upgrade`** (Claude Code, opencode, Codex) and the agent-neutral **`generators/upgrade.md`**; vendoring now uses anchored excludes from a release tag. The **magic-link** accounts variant is verified by a fresh agent's build (Linkdrop), and its 24 doc findings are fixed below.
 
-### Realtime: the Off Rails Wire protocol (offrails.v1), resume after downtime, transport fallback, connection security
+#### Realtime: the Off Rails Wire protocol (offrails.v1), resume after downtime, transport fallback, connection security
 
 Spec: `guides/channels.md` (protocol, transports, security), `guides/realtime.md` (resume). Verified in the reference app: 223 tests on SQLite and Postgres 18 (39 realtime: conformance, security, all three transports, a 3-node failover), two Playwright specs (a server restart with changes made while it was down; WebSocket → SSE → long-polling), and a two-context Chrome session.
 
@@ -283,14 +455,14 @@ Spec: `guides/channels.md` (protocol, transports, security), `guides/realtime.md
 6. **Fallback transports.** Add the four routes (`/socket/sse`, `/socket/sse/{conn}`, `/socket/poll`, `/socket/poll/{conn}` GET+POST) with `ROUTES` rows, and the handlers calling `kchannels::sse_open` / `relay_post` / `poll_open` / `poll_get`.
 7. **Tests:** port `support::Ws` to offrails.v1, add `wire_test.rs` and the resume/session cases in `kernel_pubsub_test.rs`, and `tests/e2e/realtime.spec.ts` (channels.md#testing).
 
-### Upgrading apps from any agent
+#### Upgrading apps from any agent
 - **`generators/upgrade.md`**: the upgrade recipe, agent-neutral (Claude Code, Codex, opencode, Cursor). `/offrails:upgrade` now runs it.
 - **`offrails upgrade [--check]`** in an app: compares content fingerprints with the installed framework, then launches Claude Code (`/offrails:upgrade`), opencode or Codex with the recipe, or prints the prompt. `offrails new` supports opencode too.
 - **Vendoring:** the `rsync` excludes are anchored (`/skills`, `/hooks`, `/evals`, `/brand`…), so `tools/brand/` is kept, and `--delete` removes files dropped upstream. Vendor a **release tag**, never a moving working tree. `.github/` is vendored on purpose, so fingerprints match the release.
 
 **App migration:** none required. Next time you upgrade, vendor with the anchored excludes (`generators/new.md` step 1); `tools/brand/` reappears in `.offrails/`.
 
-### Fixes from the Linkdrop build (a fresh agent, magic-link accounts)
+#### Fixes from the Linkdrop build (a fresh agent, magic-link accounts)
 - **`kernel::db::ping`** (for `/up`) and **`kernel::db::drop_idle_test_databases`** (for `test_db_cleanup`): no raw SQL outside the kernel.
 - **Panics** render the standalone 500 page via `CatchPanicLayer::custom(error::panic_response)`.
 - **Pending-migrations guard** is layered after the fallback, so unknown paths show the page too.
@@ -312,23 +484,45 @@ Spec: `guides/channels.md` (protocol, transports, security), `guides/realtime.md
 
 ## 0.3.0 (2026-10-13)
 
+### What's new
+
+- **Open source** (MIT OR Apache-2.0), with a one-line install (`curl -fsSL https://rustoffrails.org/install.sh | sh`) and the `offrails` command (`new`, `doctor`, `version`, `update`, `uninstall`).
+- **Security headers in one middleware** (`kernel/security.rs`), a `__Host-` session cookie in production, a STRIDE section in every feature spec, and CI that runs cargo-deny, gitleaks and a ZAP scan.
+- **API-only apps and a public API:** `FRONTEND_MODE: api` and an `API: none | rest | graphql | both` header line; REST under `/api/v1` with bearer tokens and OpenAPI, or GraphQL.
+- **Svelte as a UI library,** chosen with a new `UI_LIBRARY` header line.
+- **Realtime channels:** one WebSocket per tab, rooms with presence, an opt-in Postgres cluster layer, and faster signals (`NOTIFY` on Postgres: 238 ms to 2.1 ms).
+- **`compose.yaml` runs the whole app,** and every app with pages gets favicons, social cards, `robots.txt` and a sitemap from day one.
+
+### Breaking changes
+
+- `FRONTEND_MODE: react` is renamed `spa`, and the app's `AGENTS.md` header gains `UI_LIBRARY` and `API` lines.
+- The production session cookie is renamed `__Host-session_token`: deploying logs everyone out once.
+- The frontend type-check is `pnpm --dir web typecheck`; `web/package.json` needs a `typecheck` script.
+- Every mounted route must have a `ROUTES` row (a new test fails otherwise).
+
+### Upgrading
+
+Each subsection's **App migration** list below. The procedure is in [upgrade](generators/upgrade.md).
+
+### Full list of changes
+
 The open-source release. Rust off Rails is public at https://github.com/rust-off-rails/rustoffrails and installs with one line: `curl -fsSL https://rustoffrails.org/install.sh | sh`.
 
-### One-line install and the `offrails` command
+#### One-line install and the `offrails` command
 - **`install.sh`** (POSIX sh): shows its plan first, `--dry-run`, `--yes`; Rust via rustup (no sudo); sea-orm-cli, cargo-nextest and cargo-watch as prebuilt binaries via cargo-binstall; a SHA-256-verified framework release in `~/.offrails/<version>` with a `current` symlink; installs the Claude Code plugin when `claude` is present; prints the AGENTS.md prompt for Codex and Cursor. Idempotent, no telemetry. See [INSTALL.md](INSTALL.md).
 - **`offrails`**: `new <name> "<pitch>"`, `doctor`, `version`, `update`, `uninstall`.
 - New apps also get `.cursor/rules/offrails.mdc` and `.github/copilot-instructions.md`, pointing to `AGENTS.md`.
 
 **App migration:** optional. Add the two agent pointer files above.
 
-### Open source
+#### Open source
 - Dual licensed **MIT OR Apache-2.0**; `SECURITY.md` (GitHub private vulnerability reporting), `CONTRIBUTING.md` (contributions are intent plus evidence), Code of Conduct, issue forms ("Agent got stuck" first), and CI: links, hook tests, plugin validation, gitleaks, installer tests, OpenSSF Scorecard.
 - Brand: the `\R/` derailing mark and the hopping "off" wordmark, drawn as code (`brand/`).
 - Doctrine §0, **"All code is written by AI"**, is now the founding rule.
 - Plugin: `/offrails:security` skill; hooks for security tripwires, banned crates in `Cargo.toml`, append-only committed migrations, raw `.begin()`, and no `pkill`; content-fingerprint drift detection; `/offrails:upgrade` reconciles instead of re-creating.
 
 
-### Security as the gold standard: Non-negotiables, the header matrix, automated enforcement
+#### Security as the gold standard: Non-negotiables, the header matrix, automated enforcement
 
 Spec: `guides/security.md` (Non-negotiables, the header matrix, Automated enforcement, Gotchas), plus `blueprints/feature-spec.md` (a `## Security` STRIDE section), `workflow.md`, `guides/test-standards.md` §3, `guides/testing.md` CI, `generators/new.md`, `stack.md`, `structure.md`, `guides/routing.md` and `guides/auth.md`. Plugin: the `/offrails:security` skill and security tripwires in the hooks. Verified on the reference app (branch `security`): 207 tests on SQLite and Postgres 18; cargo-deny `advisories/bans/licenses/sources ok`; gitleaks clean over the history; ZAP baseline 0 FAIL, 0 WARN, 61 PASS; checked in Chrome.
 
@@ -357,7 +551,7 @@ Spec: `guides/security.md` (Non-negotiables, the header matrix, Automated enforc
 5. **CI.** Add the `security` job and the Docker job's boot + ZAP steps from `guides/testing.md#ci`. Lint with actionlint.
 6. **Feature specs.** Add a `## Security` section to every `product/features/*.md` (`blueprints/feature-spec.md`). Each threat gets a control and a test. A threat without a test is a finding.
 
-### API-only apps, the `API` axis (REST + OpenAPI, GraphQL), Docker compose, day-one meta and favicons
+#### API-only apps, the `API` axis (REST + OpenAPI, GraphQL), Docker compose, day-one meta and favicons
 
 Spec: `guides/api.md` and `guides/graphql.md` (new), `tools/brand/render.sh` (new), plus `interview.md`, `blueprints/AGENTS.md`, `generators/new.md`, `generators/scaffold.md`, `guides/views.md`, `guides/deployment.md`, `guides/auth.md`, `guides/controllers.md`, `guides/config.md`, `guides/test-standards.md`, `stack.md`, `structure.md`, `cli.md`, `RAILS_MAP.md`. Verified with the `offrails-api-demo` app (`FRONTEND_MODE: api`, `API: both`): 151 tests green on SQLite and Postgres 18, clippy clean, GraphiQL and the Scalar reference checked in Chrome, `docker compose up --build` from scratch plus the `mail` and `worker` profiles, and direct TLS (h2 via ALPN).
 
@@ -391,7 +585,7 @@ Spec: `guides/api.md` and `guides/graphql.md` (new), `tools/brand/render.sh` (ne
 4. **serde_html_form.** Ensure it's in `Cargo.toml` (`cargo add serde_html_form`). It's harmless if already present.
 5. Adding `API: rest | graphql` to an existing app is a feature, never part of an upgrade. Spec it, then follow `guides/api.md` / `guides/graphql.md` and `generators/scaffold.md` step 9b per resource.
 
-### Svelte as a UI library; the `react` mode is renamed `spa`
+#### Svelte as a UI library; the `react` mode is renamed `spa`
 
 Spec: `guides/frontend-svelte.md` (new); `stack.md`, `interview.md`, `blueprints/AGENTS.md`, `structure.md`, `generators/new.md` and `generators/scaffold.md` updated. Verified in Chrome:
 - Inertia + Svelte 5 on the reference app: every protocol check, 409 redeploy reload, HMR, Playwright, 75 Rust tests on SQLite and Postgres;
@@ -411,7 +605,7 @@ Spec: `guides/frontend-svelte.md` (new); `stack.md`, `interview.md`, `blueprints
 2. If `web/package.json` has no `typecheck` script, add `"typecheck": "tsc -b"`. CI and the DoD now call `pnpm --dir web typecheck`; update `.github/workflows/ci.yml` if it runs `exec tsc -b` directly.
 3. Switching an existing app to Svelte is a human decision, never part of an upgrade. If asked, follow `guides/frontend-svelte.md`: the Rust side changes only `VITE_ENTRY` and drops the React refresh preamble route.
 
-### Realtime: channels, presence, the hub, the cluster layer
+#### Realtime: channels, presence, the hub, the cluster layer
 
 Spec: `guides/channels.md` (new), plus changes to `guides/realtime.md`. Verified in the reference app (book page: "reading now" avatars and a live discussion), with 21 tests on SQLite and Postgres 18 including a 3-node failover, a Playwright smoke, and a manual server-restart check in Chrome.
 
@@ -439,6 +633,30 @@ Spec: `guides/channels.md` (new), plus changes to `guides/realtime.md`. Verified
    - *Converge:* move its topics into `Room` impls behind `/socket`. Keep the old route as long as clients depend on it, and log the deviation.
 
 ## 0.2.0 (2026-10-12)
+
+### What's new
+
+- **A full persistent job queue** (Oban-style: queues, timeouts, cancellation, cron, unique jobs, graceful shutdown) and the `/admin/jobs` dashboard to inspect and act on it.
+- **A dev mailbox** at `/dev/mailbox`: every email sent in development, as HTML, text or raw, on desktop or mobile, with previews and JSON for agents.
+- **`/dev` and a pending-migrations page:** in development, pending migrations show a page with a Run button instead of a broken app.
+- **Magic-link sign-in** as a first-class accounts variant, and a `TENANCY` header line.
+- **Safer data changes:** every transaction starts with `kernel::db::begin` (`BEGIN IMMEDIATE` on SQLite, so the job worker can't cause "database is locked"), and committed migrations are append-only.
+- **Test standards:** acceptance-criteria ids, an access matrix over every route, tenant isolation, coverage gates and a real-browser smoke.
+
+### Breaking changes
+
+- `DeliverEmailJob` becomes a struct (rows already queued still decode), mailer selection moves to `state::select_mailer`, and development always uses the local mailbox.
+- `/dev/mailers` becomes a 301 to `/dev/mailbox/previews`.
+- A plain `db.begin()` outside the kernel is flagged; use `kernel::db::begin`. Edits to committed migrations fail CI and are blocked by the plugin.
+- The migration crate drops its `cli` feature and `migration/src/main.rs`.
+- Postgres test databases are named `test_<crate>_<hex>`.
+- New settings `MAILER` and `APP_REVISION`; `APP_URL` defaults to localhost in development; production refuses to boot without `static/app.css`.
+
+### Upgrading
+
+The numbered **App migration** list (steps 1–20) at the end of this section. The procedure is in [upgrade](generators/upgrade.md).
+
+### Full list of changes
 
 The kernel UIs, verified end to end in a real app (bookshelf, htmx, SQLite + Postgres 18, Chrome): the full Oban-style queue and `/admin/jobs`, a Swoosh-grade dev mailbox, `/dev`, and a pending-migrations page. Specs: `guides/jobs.md`, `guides/jobs-dashboard.md`, `guides/mailers.md`, `guides/dev-tools.md`.
 
@@ -493,6 +711,22 @@ The kernel UIs, verified end to end in a real app (bookshelf, htmx, SQLite + Pos
 20. **Tests.** Bring `tests/app/kernel_jobs_test.rs` and `kernel_web_test.rs` to the lists in new.md step 7 (both backends), and `support.rs` to the job helpers + `wait_until`. Then the Definition of Done, and, if Node ≥ 22.12 and Chrome are present, `bash .offrails/tools/browser-smoke/run.sh`.
 
 ## 0.1.0 (2026-10-12)
+
+### What's new
+
+- The framework docs: the conventions, guides and recipes an agent follows to build a Rust web app.
+- The Claude Code plugin: the `new`, `feature`, `scaffold`, `generate`, `check`, `doctor`, `deploy` and `upgrade` skills, and the convention hooks.
+- Ideas borrowed from Phoenix/Elixir: Oban-style persistent jobs with the `/admin/jobs` dashboard, a Swoosh-style `/dev/mailbox`, and a `/dev` toolbox.
+
+### Breaking changes
+
+None (first release).
+
+### Upgrading
+
+Nothing to upgrade: this is the baseline.
+
+### Full list of changes
 
 First release:
 
