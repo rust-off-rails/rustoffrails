@@ -13,6 +13,7 @@ unmaintained = "all"
 ignore = [
   # Triaged exceptions only, each with a reason and a review date:
   # { id = "RUSTSEC-YYYY-NNNN", reason = "…, not reachable because …; recheck 2026-12-01" },
+  { id = "RUSTSEC-2026-0374", reason = "basic-toml is unmaintained (no safe upgrade); it comes in only through askama_derive, which reads askama.toml at compile time, so no deployed binary runs it; recheck 2027-01-25" },
 ]
 
 [licenses]

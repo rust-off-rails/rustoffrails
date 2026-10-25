@@ -37,7 +37,7 @@ pub struct Config {
     pub blocking_threads: usize,      // APP_BLOCKING_THREADS, default 16: cap on Tokio's blocking pool (Tokio's own: 512)
     pub app_url: String,              // APP_URL, absolute, no trailing slash: used in emails and the origin check
     pub port: u16,                    // PORT, default 3000
-    pub inline_worker: bool,          // APP_INLINE_WORKER: default true in dev, and in prod on SQLite
+    pub inline_worker: bool,          // APP_INLINE_WORKER: default true in development only; set it in production on one machine (SQLite)
     pub queues: Vec<(String, usize)>, // APP_QUEUES, default "default:10,mailers:5" (queue:concurrency per node)
     pub jobs_prune_days: u32,         // APP_JOBS_PRUNE_DAYS, default 7: how long finished jobs stay visible
     pub jobs_shutdown_grace: u64,     // APP_JOBS_SHUTDOWN_GRACE seconds, default 25

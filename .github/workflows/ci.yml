@@ -57,6 +57,7 @@ jobs:
         with: { components: "rustfmt, clippy" }
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: "template/app -> ${{ runner.temp }}/template-ci/target" }
+      - uses: taiki-e/install-action@cargo-deny
       - uses: taiki-e/install-action@nextest
       - name: Generate bare, all parts, and parts added one by one; fmt, clippy, tests on SQLite and Postgres, offrails-check, memory budget
         run: OFFRAILS_CI_DIR="${{ runner.temp }}/template-ci" sh tools/ci/test-template.sh

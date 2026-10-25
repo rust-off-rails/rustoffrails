@@ -277,3 +277,23 @@ fn an_unset_app_env_refuses_to_boot() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("APP_ENV is not set"), "{err}");
 }
+
+#[test]
+fn ipv6_clients_share_one_rate_limit_per_64() {
+    use offrails_app::controllers::application::ClientIp;
+    let key = |ip: &str| ClientIp(Some(ip.parse().unwrap())).key("login");
+    // The same /64, different interface ids: one budget.
+    assert_eq!(
+        key("2001:db8:1:2::1"),
+        key("2001:db8:1:2:ffff:ffff:ffff:ffff")
+    );
+    // Another /64, and an IPv4 address, are separate budgets.
+    assert_ne!(key("2001:db8:1:2::1"), key("2001:db8:1:3::1"));
+    assert_eq!(key("203.0.113.7"), "login:203.0.113.7");
+    assert_ne!(key("203.0.113.7"), key("203.0.113.8"));
+    // A dual-stack listener reports IPv4 clients as ::ffff:a.b.c.d: still one budget each, never
+    // one shared /64 for every IPv4 user.
+    assert_eq!(key("::ffff:203.0.113.7"), "login:203.0.113.7");
+    assert_ne!(key("::ffff:203.0.113.7"), key("::ffff:198.51.100.9"));
+    assert_eq!(ClientIp(None).key("login"), "login:unknown");
+}

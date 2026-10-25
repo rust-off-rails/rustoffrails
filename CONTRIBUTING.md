@@ -1,11 +1,11 @@
 # Contributing
 
-Rust off Rails has one founding rule: **all code is written by AI** ([doctrine §0](doctrine.md#0-all-code-is-written-by-ai)). That applies to this repository too. Contributions are **intent and evidence**, not hand-written code.
+Rust off Rails has one founding rule: **all code is written by AI** ([doctrine §0](doctrine.md#0-all-code-is-written-by-ai)). That is how the framework is built and what it asks of the apps made with it. Contributions are welcome in any form: pull requests, issues, ideas and feedback.
 
 ## Code policy
 
-- **AI-written code is what we accept.** Docs, generators, skills, hooks and scripts in this repo are written by coding agents, steered by people.
-- **Hand-written code is the exception.** If you had to write something by hand, explain why in the PR (what the agents got wrong, which agent and model, what you tried). It may still be accepted, but the explanation is required, and we'll usually prefer turning it into a doc fix so agents get it right next time.
+- **AI-written code is the ideal.** Docs, generators, skills, hooks and scripts in this repo are written by coding agents, steered by people, and that is the way we prefer to contribute too.
+- **Hand-written code is fine too.** Send it. Ideally an AI model reviews it before it's merged (we'll run one over the pull request, or you can ask yours to). If you wrote it by hand because an agent got something wrong, tell us what happened (which agent and model, what you tried): we can often turn that into a doc fix, so agents get it right next time.
 - **The template is code the framework ships; parts come from the samples repo.** Since 0.7.1 the framework ships the app skeleton as real, tested files ([template/](template/README.md)) that agents copy and then own; the guides stay the spec for why. Agent-written changes to `template/app/` are welcome with the same evidence as a doc fix (`tools/ci/test-template.sh` green on both databases). The optional parts in `template/parts/` are the [rust-off-rails/samples](https://github.com/rust-off-rails/samples), synced verbatim by `tools/sync-parts.sh`: changes to a part go to that repo. A guide rule a sample exposed as wrong is a doc fix here.
 
 ## Great contributions

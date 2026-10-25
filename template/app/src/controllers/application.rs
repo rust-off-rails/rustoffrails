@@ -96,8 +96,29 @@ impl ClientIp {
     /// so one `TestApp` can exhaust a limit in a loop).
     pub fn key(&self, route: &str) -> String {
         match self.0 {
-            Some(ip) => format!("{route}:{ip}"),
+            Some(ip) => format!("{route}:{}", rate_limit_ip(ip)),
             None => format!("{route}:unknown"),
+        }
+    }
+}
+
+/// The address a rate limit counts: an IPv4 address as it is (also when a dual-stack socket
+/// reports it as `::ffff:a.b.c.d`), an IPv6 address as its /64.
+// SECURITY: an ISP hands one subscriber a whole /64 (2^64 addresses), so counting full IPv6
+// addresses gives one person an unlimited budget: sign-in, magic-link and TOTP attempts rotate
+// the last 64 bits for free (test: ipv6_clients_share_one_rate_limit_per_64).
+fn rate_limit_ip(ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(v4) => v4.to_string(),
+        // WHY: on a `[::]` listener every IPv4 client arrives IPv4-mapped; as a /64 they would all
+        // share `0:0:0:0::/64`, and one client's failures would lock out every IPv4 user.
+        IpAddr::V6(v6) if v6.to_ipv4_mapped().is_some() => v6
+            .to_ipv4_mapped()
+            .map(|v4| v4.to_string())
+            .unwrap_or_default(),
+        IpAddr::V6(v6) => {
+            let s = v6.segments();
+            format!("{:x}:{:x}:{:x}:{:x}::/64", s[0], s[1], s[2], s[3])
         }
     }
 }

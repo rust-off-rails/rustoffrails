@@ -171,6 +171,13 @@ gates() {
   step "routes" sh -c 'APP_ENV=development cargo run -q -- routes > /dev/null' || return 1
   step "clippy (no unwrap/expect)" env CARGO_TARGET_DIR="$CARGO_TARGET_DIR/clippy" cargo clippy -q --lib --bins -- -D warnings -D clippy::unwrap_used -D clippy::expect_used || return 1
   step "offrails-check" sh .offrails/tools/offrails-check || return 1
+  # A new RustSec advisory in the template's lock file otherwise reaches users first: every new
+  # app's CI runs cargo deny (its .github/workflows/ci.yml), so the template's must pass too.
+  if command -v cargo-deny >/dev/null 2>&1; then
+    step "cargo deny (advisories, licenses, bans, sources)" cargo deny --locked check || return 1
+  else
+    echo "  skip: cargo deny (cargo-deny is not installed)"
+  fi
   if [ "$1" != none ]; then
     step "memory budget" sh "$root/tools/ci/memory-budget.sh" . "$1" || return 1
   fi

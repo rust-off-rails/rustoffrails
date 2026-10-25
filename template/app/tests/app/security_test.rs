@@ -36,7 +36,11 @@ pub fn concrete(path: &str) -> String {
         .map(|seg| {
             // Any other parameter (`{slug}`, `{post_id}`…): a value no record has.
             if seg.starts_with('{') && seg.ends_with('}') {
-                if seg == "{id}" || seg.ends_with("_id}") { "1" } else { "example" }
+                if seg == "{id}" || seg.ends_with("_id}") {
+                    "1"
+                } else {
+                    "example"
+                }
             } else {
                 seg
             }
