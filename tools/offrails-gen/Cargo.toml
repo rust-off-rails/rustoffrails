@@ -1,6 +1,6 @@
 [package]
 name = "offrails-gen"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2024"
 publish = false
 description = "Rust off Rails generators: a new app from the template, add a part, list parts, scaffold a resource"

@@ -6,6 +6,37 @@ Each entry lists convention changes and what an existing app must do about them.
 
 Every release section has the same shape, in this order, because `tools/release/release.sh` copies it verbatim into the GitHub Release: **What's new** (4–6 plain bullets: what you can do now and why it matters), **Breaking changes** (what an existing app must act on, or "None."), **Upgrading** (a pointer to the ordered steps and [upgrade](generators/upgrade.md)), then **Full list of changes** (the detailed entries with their App migration notes). Subsections are `###`, so the release script's `## <version> (` heading match still finds the section's end.
 
+## 0.7.4 (2026-10-25)
+
+### What's new
+
+- **Take only what you need.** The README now says plainly what the template, the parts and the snippets are: optional, tested code that is copied into your app and then yours, with no hidden framework code behind it, and the [samples repo](https://github.com/rust-off-rails/samples) to read before you add anything.
+- **A new RustSec advisory can't reach new apps first.** CI runs `cargo deny` on the template, the same check every generated app's CI runs, so an advisory in the template's lock file fails the framework's build instead of a user's first push. Four were open today, and all are fixed or triaged below.
+- **Rate limits hold for IPv6 clients.** Sign-in, magic-link and TOTP limits count an IPv6 client by its /64, the block one subscriber gets, so rotating addresses no longer buys unlimited attempts. IPv4 clients, including those a dual-stack socket reports as `::ffff:a.b.c.d`, still count one address each.
+- **Readable release notes for every version.** Each release from 0.1.0 to 0.7.2 now opens with a short What's new, like the newer ones.
+- **Contributing is friendlier.** Hand-written code is welcome, ideally reviewed by an AI model before it's merged; telling us what an agent got wrong is still the most useful report.
+
+### Breaking changes
+
+None.
+
+### Upgrading
+
+**Upgrading an app to 0.7.4, in order** (each step's Detect/Converge/Prove is in the entry it names below; [upgrade](generators/upgrade.md) is the whole procedure):
+
+1. Dependencies: patch the lock file and triage `basic-toml` (Dependency advisories, below).
+2. Rate limits: key IPv6 clients by /64 (IPv6 rate limits, below).
+3. `cargo offrails verify --fast`.
+
+### Full list of changes
+
+- **Dependency advisories: patched, triaged, and checked in CI.** `cargo deny` on a fresh app failed on four advisories: RUSTSEC-2026-0382 (rustls-webpki could accept a distrusted intermediate certificate; outbound TLS only, such as SMTP or a TLS database connection), RUSTSEC-2026-0385 (ctutils compared in non-constant time; reached through sqlx-postgres' SCRAM sign-in), RUSTSEC-2026-0386 (tokio's `AsyncFd` constructors are unsound; nothing in the template calls them) and RUSTSEC-2026-0374 (`basic-toml` is unmaintained). The template's lock file moves to rustls-webpki 0.103.16, ctutils 0.4.5 and webpki-roots 1.0.11 (tokio 1.53.3 already has the `AsyncFd` fix). `basic-toml` has no maintained release and comes in only through `askama_derive`, which reads `askama.toml` at compile time, so no deployed binary runs it: `deny.toml` ignores it with that reason and a recheck date. `tools/ci/test-template.sh` runs `cargo deny --locked check` in its gates (skipped with a note when cargo-deny isn't installed), and the template CI job installs it. *App migration:* *Detect:* `cargo deny --locked check` fails. *Converge:* `cargo update -p rustls-webpki -p ctutils -p webpki-roots -p tokio`; if it still names RUSTSEC-2026-0374, add `{ id = "RUSTSEC-2026-0374", reason = "basic-toml is unmaintained (no safe upgrade); it comes in only through askama_derive, which reads askama.toml at compile time, so no deployed binary runs it; recheck 2027-01-25" }` to `[advisories] ignore` in `deny.toml`. *Prove it:* `cargo deny --locked check` passes.
+- **IPv6 rate limits** (`src/controllers/application.rs`). `ClientIp::key` counted the full address, and an ISP hands one subscriber a whole /64, so one person could rotate the last 64 bits and never hit a limit. `rate_limit_ip` keys IPv6 by its /64 and IPv4 by its address, and treats an IPv4-mapped IPv6 address as the IPv4 address it carries: on a `[::]` listener every IPv4 client arrives that way, and as a /64 they would all have shared one budget (caught in review before release). Test: `ipv6_clients_share_one_rate_limit_per_64`. *App migration:* *Detect:* `grep -c rate_limit_ip src/controllers/application.rs` is 0. *Converge:* copy `rate_limit_ip` from `$FW/template/app/src/controllers/application.rs` and call it in `ClientIp::key` (`format!("{route}:{}", rate_limit_ip(ip))`); copy the test from `$FW/template/app/tests/app/kernel_test.rs`. *Prove it:* `cargo nextest run -E 'test(rate_limit)'`.
+- **Docs: the inline worker defaults on in development only.** [cli](cli.md) and [config](guides/config.md) said it also defaulted on in production on SQLite; the code never did. In production on one machine, set `APP_INLINE_WORKER=true` yourself.
+- **README: take only what you need.** A section on optional parts, owned code and the samples repo.
+- **CHANGELOG: What's new summaries for 0.1.0 to 0.7.2**, written from each release's full list; nothing below them changed.
+- **CONTRIBUTING: the code policy.** AI-written code is the ideal; hand-written code is fine too, ideally reviewed by an AI model; and a report of what an agent got wrong (which agent and model, what you tried) often becomes a doc fix.
+
 ## 0.7.3 (2026-10-19)
 
 ### What's new
