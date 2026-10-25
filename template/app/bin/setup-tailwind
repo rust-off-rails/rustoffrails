@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Downloads the pinned standalone Tailwind CLI to bin/tailwindcss and verifies its checksum, so
-# every machine, CI and the Docker build compile identical CSS. To upgrade: look up the current
+# Downloads the pinned standalone Tailwind CLI to bin/tailwindcss and verifies it against the
+# SHA-256 pinned below, so every machine, CI and the Docker build compile identical CSS and a
+# compromised release page cannot swap both binary and sums. To upgrade: look up the current
 # v4 tag (curl -sSLf -o /dev/null -w '%{url_effective}' \
-#   https://github.com/tailwindlabs/tailwindcss/releases/latest), then change the line below.
+#   https://github.com/tailwindlabs/tailwindcss/releases/latest), then change the version and
+#   the pinned sums (from that release's sha256sums.txt, reviewed before pasting).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -17,10 +19,20 @@ if [ -x bin/tailwindcss ] && bin/tailwindcss --help 2>/dev/null | grep -q "${TAI
   exit 0 # already the pinned version
 fi
 
+case "$asset" in
+  tailwindcss-linux-arm64)      expected=55fd0b241214eff3de1e8ee4f22796662f2d2e7a49bcfca7477cfd0bac398195 ;;
+  tailwindcss-linux-arm64-musl) expected=71ea4be79c9de9827545682df3e040053fb535d37c71ed2cfdedf9385a0868e0 ;;
+  tailwindcss-linux-x64)        expected=dc61b3ac6b8c9ca874c0cc4c57b2409791a64c5540404ca5f5367360babc313a ;;
+  tailwindcss-linux-x64-musl)   expected=a04d34ceacc8f52cbe8920ad846cdeb61d3d0021dba32db0d1f77c9d9fad7a6c ;;
+  tailwindcss-macos-arm64)      expected=cdf646702987a743464dff4d9c60fd4480d1c1e73dd819a9a67f1078815dce9d ;;
+  tailwindcss-macos-x64)        expected=7922e0953f2110c05976e3bf58f14e643d90427575e766b7d433f5f80cbee7e1 ;;
+  tailwindcss-windows-x64.exe)  expected=e0e260ce048014e9268f6237ff18f8ccf02cef521cbd0ae04e82c2cdf7aa3955 ;;
+  *) echo "no pinned checksum for $asset" >&2; exit 1 ;;
+esac
+
 echo "fetching tailwindcss $TAILWIND_VERSION ($asset)"
 curl -sSLf "$base/$asset" -o bin/tailwindcss
 chmod +x bin/tailwindcss
-expected=$(curl -sSLf "$base/sha256sums.txt" | grep "/$asset\$" | awk '{print $1}')
 actual=$(shasum -a 256 bin/tailwindcss | awk '{print $1}')
 if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
   rm -f bin/tailwindcss

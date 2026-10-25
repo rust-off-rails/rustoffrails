@@ -97,6 +97,21 @@ async fn cross_site_posts_to_every_unsafe_route_are_403() {
     }
 }
 
+#[tokio::test]
+async fn a_cookie_post_with_no_origin_and_no_fetch_metadata_is_403() {
+    let app = TestApp::with_config(development()).await;
+    app.set_cookie("session_token", "phase0-session");
+    app.without_fetch_metadata();
+    let res = app
+        .post_form("/theme", &[("theme", "dark"), ("return_to", "/")])
+        .await;
+    assert_eq!(
+        res.status,
+        StatusCode::FORBIDDEN,
+        "a session-cookie POST with no Origin and no Sec-Fetch-Site was accepted"
+    );
+}
+
 /// Without fetch metadata (older browsers) the `Origin` decides.
 #[tokio::test]
 async fn the_origin_header_decides_without_fetch_metadata() {
@@ -225,6 +240,95 @@ async fn production_and_test_answer_any_host() {
             .await
             .assert_ok();
     }
+}
+
+#[test]
+fn get_handlers_do_not_write_to_the_database() {
+    const WRITE_PATTERNS: &[&str] = &[
+        "Entity::insert",
+        "ActiveModel",
+        "update_many",
+        "delete_many",
+        "delete_by_id",
+        "execute_unprepared",
+        "execute_raw",
+        ".save(",
+        ".insert(db",
+        ".insert(&db",
+        ".insert(txn",
+        ".insert(&txn",
+    ];
+    let mut checked = 0;
+    let mut violations = Vec::new();
+    for source_path in ["src/routes.rs", "src/controllers/dev.rs"] {
+        let source = std::fs::read_to_string(source_path).expect("read routes");
+        for (at, _) in source.match_indices(".route(\"") {
+            let rest = &source[at..];
+            let Some(get_at) = rest.find("get(") else {
+                continue;
+            };
+            if get_at > 120 {
+                continue;
+            }
+            let after = &rest[get_at + 4..];
+            let handler: String = after
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == ':')
+                .collect();
+            if handler.is_empty() {
+                continue;
+            }
+            let (file, func) = match handler.rsplit_once("::") {
+                Some((module, func)) => (format!("src/controllers/{module}.rs"), func),
+                None if source_path.ends_with("dev.rs") => {
+                    ("src/controllers/dev.rs".to_owned(), handler.as_str())
+                }
+                None => continue,
+            };
+            let Ok(code) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let Some(fn_at) = code.find(&format!("fn {func}(")) else {
+                violations.push(format!("{handler}: fn {func} not found in {file}"));
+                continue;
+            };
+            let body_start = code[fn_at..].find('{').expect("fn body") + fn_at;
+            let mut depth = 0i32;
+            let mut body_end = body_start;
+            for (i, c) in code[body_start..].char_indices() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            body_end = body_start + i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            checked += 1;
+            for (n, line) in code[body_start..body_end].lines().enumerate() {
+                if line.contains("// writes:") {
+                    continue;
+                }
+                if WRITE_PATTERNS.iter().any(|p| line.contains(p)) {
+                    violations.push(format!(
+                        "{file} fn {func} (GET handler) line {}: {}",
+                        n + 1,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+    }
+    assert!(checked >= 5, "the parser found only {checked} GET handlers");
+    assert!(
+        violations.is_empty(),
+        "safe methods must not change state (guides/security.md#csrf); \
+         exempt one line with '// writes: <reason>' only when the write is the point: {violations:#?}"
+    );
 }
 
 /// ZAP's "Suspicious Comments" rule (10027) reads these words in served script comments as SQL or

@@ -2,8 +2,8 @@
 //! hardening, in one middleware (guides/security.md#the-header-matrix).
 //!
 //! It sits outside `CatchPanicLayer` and the timeout, so panic 500s and 503s carry the headers
-//! too. It only fills in headers a handler didn't set, so a route can make a header stricter
-//! (the mailbox viewer's own CSP), never remove it.
+//! too. It overwrites the matrix headers, except on sandboxed document responses (the mailbox
+//! viewer's own CSP), whose policy it keeps.
 
 use axum::{
     extract::{Request, State},
@@ -94,37 +94,53 @@ pub async fn middleware(State(h): State<Hardening>, req: Request, next: Next) ->
     let mut response = next.run(req).await;
 
     let headers = response.headers_mut();
-    fill(headers, header::CONTENT_SECURITY_POLICY, h.csp.clone());
-    fill(headers, header::STRICT_TRANSPORT_SECURITY, h.hsts.clone());
-    fill(
-        headers,
+    let sandboxed = headers
+        .get(header::CONTENT_SECURITY_POLICY)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("sandbox") && v.contains("default-src 'none'"));
+    let stricter_referrer = headers
+        .get(header::REFERRER_POLICY)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| matches!(v, "no-referrer" | "same-origin" | "strict-origin"));
+    if sandboxed {
+        fill(headers, header::CONTENT_SECURITY_POLICY, h.csp.clone());
+        fill(
+            headers,
+            header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        );
+    } else {
+        headers.insert(header::CONTENT_SECURITY_POLICY, h.csp.clone());
+        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    }
+    if !sandboxed && !stricter_referrer {
+        headers.insert(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        );
+    } else {
+        fill(
+            headers,
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        );
+    }
+    headers.insert(header::STRICT_TRANSPORT_SECURITY, h.hsts.clone());
+    headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
-    fill(
-        headers,
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
-    );
-    fill(
-        headers,
+    headers.insert(
         HeaderName::from_static("permissions-policy"),
         HeaderValue::from_static(PERMISSIONS_POLICY),
     );
-    fill(
-        headers,
+    headers.insert(
         HeaderName::from_static("cross-origin-opener-policy"),
         HeaderValue::from_static("same-origin"),
     );
-    fill(
-        headers,
+    headers.insert(
         HeaderName::from_static("cross-origin-resource-policy"),
         HeaderValue::from_static("same-origin"),
-    );
-    fill(
-        headers,
-        header::X_FRAME_OPTIONS,
-        HeaderValue::from_static("DENY"),
     );
 
     // Private data never lands in a shared or back/forward cache: every response to a request
@@ -245,6 +261,40 @@ mod tests {
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(res.headers()["x-content-type-options"], "nosniff");
         assert!(res.headers().contains_key("content-security-policy"));
+    }
+
+    #[tokio::test]
+    async fn a_handler_cannot_weaken_the_csp() {
+        use axum::{
+            Router,
+            body::Body,
+            http::{StatusCode, header},
+            middleware::from_fn_with_state,
+            response::IntoResponse,
+            routing::get,
+        };
+        use tower::ServiceExt;
+
+        async fn weak() -> impl IntoResponse {
+            ([(header::CONTENT_SECURITY_POLICY, "default-src *")], "ok")
+        }
+        let hardening = Hardening::new(&crate::config::Config::test());
+        let app = Router::new()
+            .route("/weak", get(weak))
+            .layer(from_fn_with_state(hardening, middleware));
+        let res = app
+            .oneshot(Request::builder().uri("/weak").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let csp = res.headers()["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert!(
+            csp.contains("default-src 'self'") && !csp.contains("default-src *"),
+            "handler-supplied CSP weakened the matrix: {csp}"
+        );
     }
 
     #[test]

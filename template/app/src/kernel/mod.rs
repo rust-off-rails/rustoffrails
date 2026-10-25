@@ -14,4 +14,5 @@ pub mod security;
 pub mod theme;
 pub mod tls;
 pub mod ui;
+pub mod webhook;
 // samples: kernel mods

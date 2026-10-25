@@ -61,6 +61,33 @@ pub const M_COST_KIB: u32 = 19 * 1024;
 pub const T_COST: u32 = 2;
 pub const P_COST: u32 = 1;
 
+pub const MAX_CONCURRENT_ARGON2: usize = 4;
+
+static ARGON2_PERMITS: std::sync::LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    std::sync::LazyLock::new(|| {
+        std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_ARGON2))
+    });
+
+async fn run_argon2<T, F>(work: F) -> Result<T, AppError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, AppError> + Send + 'static,
+{
+    let permit = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        ARGON2_PERMITS.clone().acquire_owned(),
+    )
+    .await
+    .map_err(|_| AppError::TooManyRequests)?
+    .map_err(|_| AppError::TooManyRequests)?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        work()
+    })
+    .await
+    .map_err(|e| AppError::Internal(anyhow::anyhow!("argon2 task: {e}")))?
+}
+
 fn hasher() -> Result<Argon2<'static>, AppError> {
     let params = Params::new(M_COST_KIB, T_COST, P_COST, None)
         .map_err(|e| AppError::Internal(anyhow::anyhow!("argon2 params: {e}")))?;
@@ -69,14 +96,13 @@ fn hasher() -> Result<Argon2<'static>, AppError> {
 
 /// Hashes on the blocking pool. Returns the PHC string.
 pub async fn hash(password: String) -> Result<String, AppError> {
-    tokio::task::spawn_blocking(move || {
+    run_argon2(move || {
         hasher()?
             .hash_password(password.as_bytes())
             .map(|h| h.to_string())
             .map_err(|e| AppError::Internal(anyhow::anyhow!("argon2 hash: {e}")))
     })
     .await
-    .map_err(|e| AppError::Internal(anyhow::anyhow!("argon2 task: {e}")))?
 }
 
 /// The outcome of checking a password.
@@ -99,7 +125,7 @@ pub fn verifies_so_far() -> u64 {
 // SECURITY: argon2's verify compares in constant time
 // (test: hashes_use_argon2id_with_owasp_parameters)
 pub async fn verify(password: String, digest: String) -> Result<Checked, AppError> {
-    tokio::task::spawn_blocking(move || {
+    run_argon2(move || {
         VERIFIES.fetch_add(1, Ordering::Relaxed);
         let Ok(parsed) = argon2::PasswordHash::new(&digest) else {
             return Ok(Checked {
@@ -117,7 +143,6 @@ pub async fn verify(password: String, digest: String) -> Result<Checked, AppErro
         })
     })
     .await
-    .map_err(|e| AppError::Internal(anyhow::anyhow!("argon2 task: {e}")))?
 }
 
 /// Is this PHC string argon2id with today's parameters?

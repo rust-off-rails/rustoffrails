@@ -11,8 +11,9 @@
 //!   10^6 codes; with the key, a database leak alone reveals nothing.
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
+
+use crate::kernel::webhook;
 
 /// 32 random bytes, base64url without padding (43 characters).
 // SECURITY: 256 bits from the OS CSPRNG; a shorter or non-crypto token can be guessed or
@@ -35,14 +36,10 @@ pub fn digest(token: &str) -> String {
 // SECURITY: keyed so a database leak can't brute-force 6-digit codes offline (10^6 tries)
 // (test: keyed_digests_depend_on_key_and_purpose)
 pub fn keyed_digest(key: &[u8], purpose: &str, secret: &str) -> String {
-    // WHY: HMAC accepts any key length, so `new_from_slice` can't fail; the fallback is unreachable.
-    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(key) else {
-        return digest(&format!("{purpose}:{secret}"));
-    };
-    mac.update(purpose.as_bytes());
-    mac.update(b":");
-    mac.update(secret.as_bytes());
-    hex(&mac.finalize().into_bytes())
+    hex(&webhook::hmac_sha256(
+        key,
+        format!("{purpose}:{secret}").as_bytes(),
+    ))
 }
 
 /// Compares two byte strings without an early exit, so the time taken doesn't reveal how many
@@ -62,6 +59,7 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 // SECURITY: `random_range` is unbiased; `% 10^n` on a random u32 would favour low codes
 // (test: codes_are_zero_padded_digits)
 pub fn generate_code(digits: u32) -> String {
+    assert!((1..=9).contains(&digits), "code length must be 1..=9 digits");
     let max = 10u32.pow(digits);
     let n: u32 = rand::random_range(0..max);
     format!("{n:0width$}", width = digits as usize)

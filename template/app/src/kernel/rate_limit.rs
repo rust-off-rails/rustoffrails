@@ -25,7 +25,27 @@ pub const DEV_LIMIT: u32 = 1000;
 #[derive(Clone)]
 struct Window {
     hits: Arc<AtomicU32>,
-    ttl: Duration,
+    ttl: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl Window {
+    fn new(ttl: Duration) -> Self {
+        Self {
+            hits: Arc::new(AtomicU32::new(0)),
+            ttl: Arc::new(std::sync::atomic::AtomicU64::new(
+                u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX),
+            )),
+        }
+    }
+
+    fn ttl(&self) -> Duration {
+        Duration::from_millis(self.ttl.load(Ordering::Relaxed))
+    }
+
+    fn widen(&self, ttl: Duration) -> bool {
+        let want = u64::try_from(ttl.as_millis()).unwrap_or(u64::MAX);
+        self.ttl.fetch_max(want, Ordering::Relaxed) < want
+    }
 }
 
 struct WindowExpiry;
@@ -37,7 +57,17 @@ impl Expiry<String, Window> for WindowExpiry {
         value: &Window,
         _created_at: Instant,
     ) -> Option<Duration> {
-        Some(value.ttl)
+        Some(value.ttl())
+    }
+
+    fn expire_after_update(
+        &self,
+        _key: &String,
+        value: &Window,
+        _updated_at: Instant,
+        _duration_until_expiry: Option<Duration>,
+    ) -> Option<Duration> {
+        Some(value.ttl())
     }
 }
 
@@ -71,18 +101,23 @@ impl RateLimiter {
     pub async fn check(&self, key: &str, limit: u32, window: Duration) -> Result<(), AppError> {
         let w = self
             .windows
-            .get_with(key.to_owned(), async move {
-                Window {
-                    hits: Arc::new(AtomicU32::new(0)),
-                    ttl: window,
-                }
-            })
+            .get_with(key.to_owned(), async move { Window::new(window) })
             .await;
-        let hits = w.hits.fetch_add(1, Ordering::Relaxed).saturating_add(1);
-        if hits > self.limit(limit) {
-            Err(AppError::TooManyRequests)
-        } else {
-            Ok(())
+        if w.widen(window) {
+            self.windows.insert(key.to_owned(), w.clone()).await;
+        }
+        let limit = self.limit(limit);
+        loop {
+            let cur = w.hits.load(Ordering::Relaxed);
+            if cur >= limit {
+                return Err(AppError::TooManyRequests);
+            }
+            if w.hits
+                .compare_exchange_weak(cur, cur + 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
+            {
+                return Ok(());
+            }
         }
     }
 
@@ -138,6 +173,72 @@ mod tests {
         assert!(rl.exhausted("k", 2).await);
         // Peeking never advanced the counter: the next hit is the third, not the fifth.
         assert!(rl.check("k", 2, window).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn refused_attempts_are_not_counted() {
+        let rl = RateLimiter::new(AppEnv::Test);
+        let window = Duration::from_secs(3600);
+        for _ in 0..3 {
+            rl.check("login:counted", 3, window).await.unwrap();
+        }
+        for _ in 0..5 {
+            assert!(rl.check("login:counted", 3, window).await.is_err());
+        }
+        let w = rl
+            .windows
+            .get("login:counted")
+            .await
+            .expect("the window exists");
+        assert_eq!(
+            w.hits.load(Ordering::Relaxed),
+            3,
+            "refused attempts incremented the counter"
+        );
+        assert!(rl.exhausted("login:counted", 3).await);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_callers_admit_exactly_the_limit() {
+        let rl = Arc::new(RateLimiter::new(AppEnv::Test));
+        let window = Duration::from_secs(3600);
+        let barrier = Arc::new(tokio::sync::Barrier::new(100));
+        let mut tasks = Vec::new();
+        for _ in 0..100 {
+            let rl = rl.clone();
+            let barrier = barrier.clone();
+            tasks.push(tokio::spawn(async move {
+                barrier.wait().await;
+                rl.check("login:race", 10, window).await.is_ok()
+            }));
+        }
+        let mut passed = 0;
+        for t in tasks {
+            if t.await.unwrap() {
+                passed += 1;
+            }
+        }
+        assert_eq!(passed, 10, "exactly the limit may pass concurrently");
+    }
+
+    #[tokio::test]
+    async fn a_later_callers_window_is_honoured_for_the_same_key() {
+        let rl = RateLimiter::new(AppEnv::Test);
+        rl.check("shared", 1, Duration::from_millis(60))
+            .await
+            .unwrap();
+        assert!(
+            rl.check("shared", 1, Duration::from_secs(3600))
+                .await
+                .is_err()
+        );
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert!(
+            rl.check("shared", 1, Duration::from_secs(3600))
+                .await
+                .is_err(),
+            "the first caller's 60ms window expired a key the second caller holds for an hour"
+        );
     }
 
     #[tokio::test]
