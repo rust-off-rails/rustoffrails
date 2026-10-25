@@ -113,12 +113,32 @@ sha256_of() {
   else die "need sha256sum or shasum to verify the download"; fi
 }
 
+# Ed25519 public key for release signatures (checksums.txt.sig, made by
+# tools/release/release.sh with OFFRAILS_SIGN_KEY). The private key is held
+# offline by the maintainer and is never in this repo. OFFRAILS_PUBKEY_FILE
+# overrides the key file (key rotation, tests).
+RELEASE_PUBKEY="-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA0O8r0OjSDxhkB6f5y4LudQu2jMg7qLEt7PrFiL90nlo=
+-----END PUBLIC KEY-----"
+
+verify_sums_signature() {
+  pub=${OFFRAILS_PUBKEY_FILE:-}
+  if [ -z "$pub" ]; then
+    pub="$TMPD/release-pub.pem"
+    printf '%s\n' "$RELEASE_PUBKEY" >"$pub"
+  fi
+  have openssl || die "need openssl to verify the release signature"
+  openssl pkeyutl -verify -pubin -inkey "$pub" -rawin -in "$1" -sigfile "$2" >/dev/null 2>&1 \
+    || die "release signature verification failed for $SUMS. Not installing."
+  ok "release signature verified (Ed25519)"
+}
+
 # fetch <url-or-path> <dest>
 fetch() {
   case "$1" in
     http://*|https://*)
-      if have curl; then curl -fsSL --proto '=https' --tlsv1.2 "$1" -o "$2" 2>/dev/null || curl -fsSL --proto '=https' "$1" -o "$2"
-      elif have wget; then wget -q "$1" -O "$2"
+      if have curl; then curl -fsSL --proto '=https' --tlsv1.2 "$1" -o "$2"
+      elif have wget; then wget -q --https-only "$1" -O "$2"
       else die "need curl or wget to download $1"; fi ;;
     file://*) cp "${1#file://}" "$2" ;;
     *) cp "$1" "$2" ;;
@@ -227,7 +247,7 @@ trap 'rm -rf "$TMPD"' EXIT INT TERM
 if [ "$DRY" = 1 ]; then
   run fetch "$TARBALL_URL" "$TMPD/$ASSET"
   run fetch "$SUMS_URL" "$TMPD/$SUMS"
-  note "verify SHA-256, unpack to $OFFRAILS_HOME/<version>, point $OFFRAILS_HOME/current at it"
+  note "verify $SUMS.sig (Ed25519) and SHA-256, unpack to $OFFRAILS_HOME/<version>, point $OFFRAILS_HOME/current at it"
   VERSION_INSTALLED="<version>"
 else
   if ! fetch "$TARBALL_URL" "$TMPD/$ASSET"; then
@@ -237,6 +257,14 @@ else
     die "could not read $TARBALL_URL"
   fi
   fetch "$SUMS_URL" "$TMPD/$SUMS" || die "could not download $SUMS_URL"
+  if fetch "$SUMS_URL.sig" "$TMPD/$SUMS.sig" 2>/dev/null; then
+    verify_sums_signature "$TMPD/$SUMS" "$TMPD/$SUMS.sig"
+  else
+    case "$TARBALL_URL" in
+      http://*|https://*) die "no $SUMS.sig beside $SUMS_URL: refusing an unsigned download (releases are signed; see INSTALL.md)" ;;
+      *) warn "no $SUMS.sig beside the local source; trusting the local source without a signature" ;;
+    esac
+  fi
   expected=$(awk -v f="$ASSET" '$2==f || $2=="*"f {print $1}' "$TMPD/$SUMS" | head -n1)
   [ -n "$expected" ] || die "$SUMS has no entry for $ASSET"
   actual=$(sha256_of "$TMPD/$ASSET")
@@ -289,17 +317,16 @@ if [ "$AGENTS" = 1 ] && have claude; then
   if claude plugin list --json 2>/dev/null | grep -q '"offrails@offrails"'; then
     ok "Claude Code plugin offrails@offrails already installed (update with: claude plugin update offrails@offrails)"
   else
-    # The release tarball above is checksum-verified at $VERSION_INSTALLED, but `claude plugin
-    # marketplace add` takes no ref or tag (see its --help: only a URL, path or GitHub repo), so the
-    # plugin is fetched from the default branch (main) and updated from it. It is not pinned.
-    warn "the Claude Code plugin tracks the $REPO default branch (main), not release $VERSION_INSTALLED, and is not checksum-verified; the framework itself is"
+    # The release tarball above is checksum-verified at $VERSION_INSTALLED, and the plugin is
+    # installed from that verified copy on disk, so it is pinned to the same release.
+    note "the Claude Code plugin is installed from the checksum-verified framework copy at $(pretty "$OFFRAILS_HOME/current") (release $VERSION_INSTALLED), not from the moving default branch"
     if ! claude plugin marketplace list --json 2>/dev/null | grep -q '"name": *"offrails"'; then
-      run claude plugin marketplace add "$REPO" >/dev/null 2>&1 || warn "could not add the marketplace $REPO (try: claude plugin marketplace add $REPO)"
+      run claude plugin marketplace add "$OFFRAILS_HOME/current" >/dev/null 2>&1 || warn "could not add the marketplace at $OFFRAILS_HOME/current (try: claude plugin marketplace add $OFFRAILS_HOME/current)"
     fi
     if run claude plugin install offrails@offrails --scope user >/dev/null 2>&1; then
       [ "$DRY" = 1 ] || ok "Claude Code plugin installed: /offrails:new, /offrails:feature, … (restart Claude Code to load it)"
     else
-      warn "plugin install failed; inside Claude Code run: /plugin marketplace add $REPO, then /plugin install offrails@offrails"
+      warn "plugin install failed; inside Claude Code run: /plugin marketplace add $OFFRAILS_HOME/current, then /plugin install offrails@offrails"
     fi
   fi
 elif [ "$AGENTS" = 1 ]; then

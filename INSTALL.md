@@ -17,12 +17,12 @@ Read before you pipe: [`install.sh`](install.sh) is about 300 lines of POSIX she
    - If that fails, it falls back to `cargo install --locked` (minutes) and warns you.
 4. **The framework**:
    - Downloads `rustoffrails.tar.gz` and `checksums.txt` from the GitHub release: latest, or `--version X.Y.Z`.
-   - **Verifies the SHA-256** and refuses to install on a mismatch.
+   - **Verifies the SHA-256** and refuses to install on a mismatch. Downloads also require `checksums.txt.sig`, an Ed25519 signature of `checksums.txt` verified against the release public key embedded in `install.sh` (the private key is held offline by the maintainer; `OFFRAILS_PUBKEY_FILE` overrides the key for rotation or tests). A local `OFFRAILS_SOURCE` without a signature installs with a warning, since a directory you pointed at is already trusted.
    - Unpacks to `~/.offrails/<version>/` and points `~/.offrails/current` at it.
    - Re-running with the same release is a no-op.
 5. **The `offrails` command**: copies `~/.offrails/current/tools/offrails` to `~/.local/bin/offrails`. If that directory isn't on your `PATH`, it tells you the exact line to add.
 6. **Coding agents**:
-   - If `claude` (Claude Code) is on your PATH, it adds the marketplace and installs the plugin: `claude plugin marketplace add rust-off-rails/rustoffrails`, then `claude plugin install offrails@offrails --scope user`. It skips this if the plugin is already installed.
+   - If `claude` (Claude Code) is on your PATH, it adds the marketplace from the checksum-verified framework copy it just installed (`~/.offrails/current`) and installs the plugin: `claude plugin marketplace add ~/.offrails/current`, then `claude plugin install offrails@offrails --scope user`. It skips this if the plugin is already installed.
    - For Codex, Cursor or any other agent, it prints the one-line prompt that points the agent at `~/.offrails/current/AGENTS.md`.
 7. **Optional tools**: it only *detects* Docker (local Postgres, image builds, deploys), Node 24 and pnpm (only for `inertia`/`spa`/islands apps). It doesn't install them.
 
@@ -39,7 +39,7 @@ It sends no telemetry. Output is coloured only on a terminal (set `NO_COLOR=1` t
 | `--no-agents` | Skip the Claude Code plugin |
 | `OFFRAILS_HOME` | Framework location (default `~/.offrails`) |
 | `OFFRAILS_BIN_DIR` | Where `offrails` goes (default `~/.local/bin`) |
-| `OFFRAILS_SOURCE` | A directory or URL holding `rustoffrails.tar.gz` + `checksums.txt` (offline installs, mirrors) |
+| `OFFRAILS_SOURCE` | A directory or URL holding `rustoffrails.tar.gz` + `checksums.txt` (offline installs, mirrors; URL sources also need `checksums.txt.sig`) |
 
 Pass options through the pipe like this: `curl -fsSL https://rustoffrails.org/install.sh | sh -s -- --dry-run`.
 
