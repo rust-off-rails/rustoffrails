@@ -8,6 +8,10 @@
 
 The convention lives in the prose; the code is copied from the template and its parts, then written by the agent for everything app-specific. Humans still write none of it.
 
+## Take only what you need
+
+Nothing here is all-or-nothing. There is no framework code hidden under your app: what we give you is copied into it, so it's all in your repo and yours to change. (Apps still use ordinary crates like Axum and SeaORM.) Your agent gets good ideas and inspiration: the crates we'd recommend and why, and tested reference code for things we like, such as job processing, presence and authenticated webhooks, in [the samples repo](https://github.com/rust-off-rails/samples), with screenshots. Use the whole template, one part, or only a convention. We're still experimenting and building real apps with it, and so far it has gone better than we expected.
+
 ## Standing on giants
 
 We take the best ideas of two great ecosystems and bring them together in one stack.
