@@ -66,7 +66,7 @@ pub fn router(state: AppState) -> anyhow::Result<Router> {
         .layer(from_fn(kernel::assets::cache_headers));     // ?v= → immutable, else no-cache
     let csrf = CsrfLayer::new()
         .add_trusted_origin(&config.app_url)?
-        .with_insecure_bypass(|_, uri| uri.path().starts_with("/webhooks/"))
+        .with_insecure_bypass(|_, uri| kernel::webhook::is_registered(uri.path()))
         .with_rejection_response(|_| AppError::Forbidden.into_response());
 
     Ok(app

@@ -88,6 +88,35 @@ else grep -q "checksum mismatch" "$T/tamper" && [ ! -e "$H/.offrails/$VERSION" ]
 
 HOME="$T/home-dry" OFFRAILS_SOURCE="$T/dist" sh install.sh --dry-run --no-agents >/dev/null 2>&1 && [ ! -e "$T/home-dry/.offrails" ] && pass "local: --dry-run changes nothing" || bad "local: --dry-run"
 
+# A signed dist (throwaway Ed25519 key) verifies; the same dist with a swapped
+# checksums.txt is refused before anything is installed.
+openssl genpkey -algorithm Ed25519 -out "$T/sign.pem" 2>/dev/null
+openssl pkey -in "$T/sign.pem" -pubout -out "$T/sign.pub.pem" 2>/dev/null
+OFFRAILS_SIGN_KEY="$T/sign.pem" sh tools/release/release.sh --build-only --worktree --out "$T/dist-signed" >/dev/null 2>&1
+[ -f "$T/dist-signed/checksums.txt.sig" ] && pass "local: release signs checksums.txt" || bad "local: release signing"
+H="$T/home-signed"; mkdir -p "$H"
+HOME="$H" OFFRAILS_SOURCE="$T/dist-signed" OFFRAILS_PUBKEY_FILE="$T/sign.pub.pem" sh install.sh --yes --no-toolchain --no-agents >"$T/signed" 2>&1 \
+  && [ -x "$H/.offrails/current/tools/offrails" ] \
+  && pass "local: signed dist installs" || { bad "local: signed dist"; cat "$T/signed"; }
+perl -i -pe 's/^./X/ if $. == 1' "$T/dist-signed/checksums.txt"
+H="$T/home-forged"; mkdir -p "$H"
+if HOME="$H" OFFRAILS_SOURCE="$T/dist-signed" OFFRAILS_PUBKEY_FILE="$T/sign.pub.pem" sh install.sh --yes --no-toolchain --no-agents >"$T/forged" 2>&1; then
+  bad "local: forged checksums accepted"
+elif [ ! -e "$H/.offrails" ] && grep -qi "signature" "$T/forged"; then
+  pass "local: forged checksums refused, nothing installed"
+else
+  bad "local: forged checksums handling"; cat "$T/forged"
+fi
+
+# The plugin comes from the verified framework copy on disk, never the moving repo branch.
+FAKEBIN="$T/fakebin"; mkdir -p "$FAKEBIN"
+printf '#!/bin/sh\necho "claude $*" >>"%s/plugin-calls"\n' "$T" >"$FAKEBIN/claude"; chmod +x "$FAKEBIN/claude"
+H="$T/home-plugin"; mkdir -p "$H"
+HOME="$H" PATH="$FAKEBIN:/usr/bin:/bin" OFFRAILS_SOURCE="$T/dist" sh install.sh --yes --no-toolchain >"$T/plugin" 2>&1 || true
+grep -q "plugin marketplace add $H/.offrails/current" "$T/plugin-calls" 2>/dev/null \
+  && ! grep -q "rust-off-rails/rustoffrails" "$T/plugin-calls" \
+  && pass "local: plugin marketplace is the verified local copy" || { bad "local: plugin source"; cat "$T/plugin-calls" 2>/dev/null; cat "$T/plugin"; }
+
 # ── clean Linux containers, non-root ──
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   for img in ubuntu:24.04 debian:trixie-slim; do

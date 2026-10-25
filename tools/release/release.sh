@@ -12,6 +12,9 @@
 #                         (~/.offrails serves Codex and other agents, not only the plugin)
 #   install.sh            the installer, also served at https://rustoffrails.org/install.sh
 #   checksums.txt         SHA-256 of both, verified by install.sh
+#   checksums.txt.sig     Ed25519 signature of checksums.txt (OFFRAILS_SIGN_KEY, a PEM private
+#                         key held offline, never in this repo). Publishing requires it;
+#                         --build-only signs only when the key is set (tests use a throwaway).
 set -eu
 
 cd "$(dirname "$0")/../.."
@@ -27,6 +30,11 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+if [ "$BUILD_ONLY" = 0 ] && [ "$DRY" = 0 ] && { [ -z "${OFFRAILS_SIGN_KEY:-}" ] || [ ! -f "$OFFRAILS_SIGN_KEY" ]; }; then
+  echo "release: OFFRAILS_SIGN_KEY must name the Ed25519 private key (PEM) that signs checksums.txt; publishing an unsigned release is refused (install.sh requires the signature for downloads)" >&2
+  exit 1
+fi
 
 VERSION=$(head -n1 VERSION)
 TAG="v$VERSION"
@@ -67,9 +75,13 @@ else
 fi
 cp install.sh "$OUT/install.sh"
 (cd "$OUT" && { if command -v sha256sum >/dev/null; then sha256sum rustoffrails.tar.gz install.sh; else shasum -a 256 rustoffrails.tar.gz install.sh; fi; } >checksums.txt)
+if [ -n "${OFFRAILS_SIGN_KEY:-}" ] && [ -f "$OFFRAILS_SIGN_KEY" ]; then
+  openssl pkeyutl -sign -rawin -inkey "$OFFRAILS_SIGN_KEY" -in "$OUT/checksums.txt" -out "$OUT/checksums.txt.sig" \
+    || { echo "release: signing checksums.txt with OFFRAILS_SIGN_KEY failed" >&2; exit 1; }
+fi
 
 echo "Built Rust off Rails $VERSION in $OUT:"
-for f in rustoffrails.tar.gz install.sh checksums.txt; do printf '  %s  %s bytes\n' "$f" "$(wc -c <"$OUT/$f" | tr -d ' ')"; done
+for f in rustoffrails.tar.gz install.sh checksums.txt checksums.txt.sig; do [ -f "$OUT/$f" ] && printf '  %s  %s bytes\n' "$f" "$(wc -c <"$OUT/$f" | tr -d ' ')"; done
 [ "$BUILD_ONLY" = 1 ] && exit 0
 
 notes=$(awk -v v="$VERSION" '$0 ~ "^## "v" " {f=1; next} f && /^## / {exit} f' CHANGELOG.md)
@@ -77,12 +89,12 @@ notes=$(awk -v v="$VERSION" '$0 ~ "^## "v" " {f=1; next} f && /^## / {exit} f' C
 if [ "$DRY" = 1 ]; then
   echo "Dry run. Would run:"
   echo "  git tag -a $TAG -m 'Rust off Rails $VERSION' && git push origin $TAG"
-  echo "  gh release create $TAG $OUT/rustoffrails.tar.gz $OUT/install.sh $OUT/checksums.txt --repo $REPO --title 'Rust off Rails $VERSION' --notes <CHANGELOG section, $(printf '%s' "$notes" | wc -l | tr -d ' ') lines>"
+  echo "  gh release create $TAG $OUT/rustoffrails.tar.gz $OUT/install.sh $OUT/checksums.txt $OUT/checksums.txt.sig --repo $REPO --title 'Rust off Rails $VERSION' --notes <CHANGELOG section, $(printf '%s' "$notes" | wc -l | tr -d ' ') lines>"
   echo "  then publish install.sh at https://rustoffrails.org/install.sh (the website serves the latest release's copy)"
   exit 0
 fi
 git tag -a "$TAG" -m "Rust off Rails $VERSION"
 git push origin "$TAG"
-printf '%s\n' "$notes" | gh release create "$TAG" "$OUT/rustoffrails.tar.gz" "$OUT/install.sh" "$OUT/checksums.txt" \
+printf '%s\n' "$notes" | gh release create "$TAG" "$OUT/rustoffrails.tar.gz" "$OUT/install.sh" "$OUT/checksums.txt" "$OUT/checksums.txt.sig" \
   --repo "$REPO" --title "Rust off Rails $VERSION" --notes-file -
 echo "Released $TAG: https://github.com/$REPO/releases/tag/$TAG"
