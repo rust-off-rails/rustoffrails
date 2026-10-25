@@ -17,7 +17,7 @@ Read before you pipe: [`install.sh`](install.sh) is about 300 lines of POSIX she
    - If that fails, it falls back to `cargo install --locked` (minutes) and warns you.
 4. **The framework**:
    - Downloads `rustoffrails.tar.gz` and `checksums.txt` from the GitHub release: latest, or `--version X.Y.Z`.
-   - **Verifies the SHA-256** and refuses to install on a mismatch. Downloads also require `checksums.txt.sig`, an Ed25519 signature of `checksums.txt` verified against the release public key embedded in `install.sh` (the private key is held offline by the maintainer; `OFFRAILS_PUBKEY_FILE` overrides the key for rotation or tests). A local `OFFRAILS_SOURCE` without a signature installs with a warning, since a directory you pointed at is already trusted.
+   - **Verifies the SHA-256** and refuses to install on a mismatch. Downloads also require `checksums.txt.sig`, an Ed25519 signature of `checksums.txt` verified against the release public key embedded in `install.sh` (the private key is kept by the maintainer outside this repo; `OFFRAILS_PUBKEY_FILE` overrides the key for rotation or tests). A local `OFFRAILS_SOURCE` without a signature installs with a warning, since a directory you pointed at is already trusted.
    - Unpacks to `~/.offrails/<version>/` and points `~/.offrails/current` at it.
    - Re-running with the same release is a no-op.
 5. **The `offrails` command**: copies `~/.offrails/current/tools/offrails` to `~/.local/bin/offrails`. If that directory isn't on your `PATH`, it tells you the exact line to add.

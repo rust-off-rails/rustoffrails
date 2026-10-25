@@ -87,7 +87,7 @@ use std::net::{IpAddr, Ipv4Addr};
 
 /// `APP_BIND`, or the environment's default: loopback in development, every interface otherwise.
 // SECURITY: development serves /dev tools without a login; on 0.0.0.0 anyone on the same Wi-Fi
-// could open them. A dev container sets APP_BIND=0.0.0.0 explicitly
+// could open them. A dev container sets APP_BIND=0.0.0.0 and APP_DEV_REMOTE=1 explicitly
 // (test: development_binds_loopback_unless_told_otherwise).
 pub fn bind_address(env: AppEnv, raw: Option<&str>) -> Result<IpAddr, String> {
     match raw.map(str::trim).filter(|v| !v.is_empty()) {
@@ -177,7 +177,7 @@ fn development_binds_loopback_unless_told_otherwise() {
   - `DATABASE_URL=sqlite://storage/development.sqlite3?mode=rwc`
   - `APP_URL=http://localhost:{PORT}`: it follows `PORT` (`config::dev_app_url(port)`), so emailed links and the CSRF origin check still work when you run on another port. Parse `PORT` before `APP_URL`.
 - `APP_ENV` unset **refuses to boot** with a message naming the fix (above): on a server an unset `APP_ENV` is a missing setting that would mount `/dev` and `/admin/jobs` without a login, and a default is not a gate. The Dockerfile sets `APP_ENV=production`, and so must every deploy config. `TestApp` builds `Config` directly (`Config::test()`) and never reads the environment.
-- `serve` listens on `APP_BIND`: **127.0.0.1 in development**, 0.0.0.0 in production (the container's interface, behind the platform's proxy). A dev container, or a phone on your LAN, needs `APP_BIND=0.0.0.0` **and** its host name in `APP_ALLOWED_HOSTS` ([security](security.md#development-is-this-machine-only)).
+- `serve` listens on `APP_BIND`: **127.0.0.1 in development**, 0.0.0.0 in production (the container's interface, behind the platform's proxy). A dev container, or a phone on your LAN, needs `APP_BIND=0.0.0.0`, `APP_DEV_REMOTE=1` **and** its host name in `APP_ALLOWED_HOSTS` ([security](security.md#development-is-this-machine-only)).
 
 ### Runtime threads (`APP_WORKER_THREADS`, `APP_BLOCKING_THREADS`)
 
@@ -219,6 +219,7 @@ DATABASE_URL=sqlite://storage/development.sqlite3?mode=rwc
 # DATABASE_URL=postgres://postgres:postgres@localhost:5432/myapp_development
 DATABASE_POOL=10
 # APP_BIND=0.0.0.0             # development listens on 127.0.0.1 only (its /dev tools have no login); a dev container opts in here. Production default: 0.0.0.0
+# APP_DEV_REMOTE=1             # required with a non-loopback APP_BIND in development: everyone on that network can then read /dev and the mailbox
 # APP_ALLOWED_HOSTS=dev.example.com,.lan.example   # development answers only localhost and APP_URL's host (DNS rebinding); add a tunnel or LAN name ('.' = subdomains too)
 APP_INLINE_WORKER=true
 # APP_TRUSTED_PROXY=true       # behind Fly, Render or any proxy: read the client IP from X-Forwarded-For (REQUIRED behind any proxy, or every user shares one rate-limit key)

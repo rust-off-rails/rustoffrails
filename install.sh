@@ -114,8 +114,8 @@ sha256_of() {
 }
 
 # Ed25519 public key for release signatures (checksums.txt.sig, made by
-# tools/release/release.sh with OFFRAILS_SIGN_KEY). The private key is held
-# offline by the maintainer and is never in this repo. OFFRAILS_PUBKEY_FILE
+# tools/release/release.sh with OFFRAILS_SIGN_KEY). The private key is kept by
+# the maintainer outside this repo, never committed. OFFRAILS_PUBKEY_FILE
 # overrides the key file (key rotation, tests).
 RELEASE_PUBKEY="-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA0O8r0OjSDxhkB6f5y4LudQu2jMg7qLEt7PrFiL90nlo=

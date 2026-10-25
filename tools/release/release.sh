@@ -13,7 +13,7 @@
 #   install.sh            the installer, also served at https://rustoffrails.org/install.sh
 #   checksums.txt         SHA-256 of both, verified by install.sh
 #   checksums.txt.sig     Ed25519 signature of checksums.txt (OFFRAILS_SIGN_KEY, a PEM private
-#                         key held offline, never in this repo). Publishing requires it;
+#                         key kept outside this repo, never committed). Publishing requires it;
 #                         --build-only signs only when the key is set (tests use a throwaway).
 set -eu
 

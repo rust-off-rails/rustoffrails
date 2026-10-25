@@ -13,7 +13,7 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
-use crate::kernel::webhook;
+use crate::kernel::crypto;
 
 /// 32 random bytes, base64url without padding (43 characters).
 // SECURITY: 256 bits from the OS CSPRNG; a shorter or non-crypto token can be guessed or
@@ -36,7 +36,9 @@ pub fn digest(token: &str) -> String {
 // SECURITY: keyed so a database leak can't brute-force 6-digit codes offline (10^6 tries)
 // (test: keyed_digests_depend_on_key_and_purpose)
 pub fn keyed_digest(key: &[u8], purpose: &str, secret: &str) -> String {
-    hex(&webhook::hmac_sha256(
+    // WHY: the kernel's HMAC (`kernel::crypto`) can't fail on any key length, so there is no
+    // fallback to a weaker unkeyed digest.
+    hex(&crypto::hmac_sha256(
         key,
         format!("{purpose}:{secret}").as_bytes(),
     ))
@@ -55,7 +57,8 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
         == 0
 }
 
-/// A uniformly random numeric code, zero-padded (`"042917"`).
+/// A uniformly random numeric code, zero-padded (`"042917"`). Panics unless `digits` is 1 to 9
+/// (a programming error: callers pass a constant, and 10 digits overflow a `u32`).
 // SECURITY: `random_range` is unbiased; `% 10^n` on a random u32 would favour low codes
 // (test: codes_are_zero_padded_digits)
 pub fn generate_code(digits: u32) -> String {

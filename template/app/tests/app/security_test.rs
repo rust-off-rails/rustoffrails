@@ -36,7 +36,11 @@ pub fn concrete(path: &str) -> String {
         .map(|seg| {
             // Any other parameter (`{slug}`, `{post_id}`…): a value no record has.
             if seg.starts_with('{') && seg.ends_with('}') {
-                if seg == "{id}" || seg.ends_with("_id}") { "1" } else { "example" }
+                if seg == "{id}" || seg.ends_with("_id}") {
+                    "1"
+                } else {
+                    "example"
+                }
             } else {
                 seg
             }
@@ -285,7 +289,20 @@ fn get_handlers_do_not_write_to_the_database() {
     ];
     let mut checked = 0;
     let mut violations = Vec::new();
-    for source_path in ["src/routes.rs", "src/controllers/dev.rs"] {
+    // WHY: the app's own routes, the dev routes, and every feature's routes file (`src/routes/`).
+    let mut sources = vec![
+        "src/routes.rs".to_owned(),
+        "src/controllers/dev.rs".to_owned(),
+    ];
+    if let Ok(dir) = std::fs::read_dir("src/routes") {
+        sources.extend(
+            dir.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+                .map(|p| p.to_string_lossy().into_owned()),
+        );
+    }
+    for source_path in &sources {
         let source = std::fs::read_to_string(source_path).expect("read routes");
         for (at, _) in source.match_indices(".route(\"") {
             let rest = &source[at..];
@@ -303,18 +320,33 @@ fn get_handlers_do_not_write_to_the_database() {
             if handler.is_empty() {
                 continue;
             }
-            let (file, func) = match handler.rsplit_once("::") {
-                Some((module, func)) => (format!("src/controllers/{module}.rs"), func),
-                None if source_path.ends_with("dev.rs") => {
-                    ("src/controllers/dev.rs".to_owned(), handler.as_str())
-                }
+            // `posts::index`, `crate::controllers::posts::index` (generated features) or a bare
+            // `index` in the dev routes: find the file that defines it, in `posts.rs`, or any file
+            // of a `posts/` folder (0.7.3 features: one file per action pair).
+            let handler_path = handler.trim_start_matches("crate::controllers::");
+            let (module, func) = match handler_path.rsplit_once("::") {
+                Some((module, func)) => (module.replace("::", "/"), func),
+                None if source_path.ends_with("dev.rs") => ("dev".to_owned(), handler_path),
                 None => continue,
             };
-            let Ok(code) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            let Some(fn_at) = code.find(&format!("fn {func}(")) else {
-                violations.push(format!("{handler}: fn {func} not found in {file}"));
+            let mut candidates = vec![format!("src/controllers/{module}.rs")];
+            if let Ok(dir) = std::fs::read_dir(format!("src/controllers/{module}")) {
+                candidates.extend(
+                    dir.flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+                        .map(|p| p.to_string_lossy().into_owned()),
+                );
+            }
+            let found = candidates.iter().find_map(|file| {
+                let code = std::fs::read_to_string(file).ok()?;
+                let at = code.find(&format!("fn {func}("))?;
+                Some((file.clone(), code, at))
+            });
+            let Some((file, code, fn_at)) = found else {
+                violations.push(format!(
+                    "{handler}: fn {func} not found under src/controllers/{module}"
+                ));
                 continue;
             };
             let body_start = code[fn_at..].find('{').expect("fn body") + fn_at;

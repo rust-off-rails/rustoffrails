@@ -61,6 +61,8 @@ pub const M_COST_KIB: u32 = 19 * 1024;
 pub const T_COST: u32 = 2;
 pub const P_COST: u32 = 1;
 
+/// APP: argon2 hashes or verifies running at once (each takes about 19 MiB and a blocking
+/// thread). More wait up to 5 seconds, then get 429, so a login flood can't exhaust the pool.
 pub const MAX_CONCURRENT_ARGON2: usize = 4;
 
 static ARGON2_PERMITS: std::sync::LazyLock<std::sync::Arc<tokio::sync::Semaphore>> =
@@ -68,6 +70,8 @@ static ARGON2_PERMITS: std::sync::LazyLock<std::sync::Arc<tokio::sync::Semaphore
         std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_ARGON2))
     });
 
+/// Runs argon2 `work` on the blocking pool, at most `MAX_CONCURRENT_ARGON2` at a time.
+// SECURITY: bounded so concurrent sign-ins can't saturate the blocking pool (CPU and memory DoS)
 async fn run_argon2<T, F>(work: F) -> Result<T, AppError>
 where
     T: Send + 'static,

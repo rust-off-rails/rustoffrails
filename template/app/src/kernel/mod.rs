@@ -3,6 +3,7 @@
 pub mod assets;
 pub mod cache;
 pub mod cookie;
+pub mod crypto;
 pub mod css;
 pub mod db;
 pub mod flash;

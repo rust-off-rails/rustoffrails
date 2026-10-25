@@ -930,8 +930,9 @@ pub fn in_scheme(html: &str, scheme: Option<&str>) -> String {
     }
 }
 
-/// The iframe body with its own headers (the global header matrix only fills headers a response
-/// didn't set, so these win).
+/// The iframe body with its own headers. The global header matrix overwrites handler headers,
+/// except on a sandboxed document like this one (`sandbox` plus `default-src 'none'`), whose CSP
+/// and frame options it keeps.
 pub fn sandboxed_html(html: &str) -> Response {
     let mut res = Html(with_blank_base(html)).into_response();
     let h = res.headers_mut();
