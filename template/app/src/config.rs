@@ -279,6 +279,21 @@ impl Config {
             invalid.push(problem);
             IpAddr::V4(Ipv4Addr::LOCALHOST)
         });
+        let dev_remote = match get("APP_DEV_REMOTE").as_deref() {
+            None | Some("false") | Some("0") => false,
+            Some("true") | Some("1") => true,
+            Some(_) => {
+                invalid.push("APP_DEV_REMOTE (expected true or false)".into());
+                false
+            }
+        };
+        if env == AppEnv::Development && !bind.is_loopback() && !dev_remote {
+            invalid.push(
+                "APP_DEV_REMOTE (set APP_DEV_REMOTE=1 to serve development beyond this machine: \
+                 /dev tools have no login, and a Host header is not authentication)"
+                    .into(),
+            );
+        }
         let allowed_hosts = parse_allowed_hosts(get("APP_ALLOWED_HOSTS").as_deref());
 
         let log_format = match get("LOG_FORMAT").as_deref() {

@@ -262,6 +262,25 @@ async fn the_postgres_test_reset_empties_tables_and_refuses_a_changed_schema() {
     assert!(refused.to_string().contains("schema changed"), "{refused}");
 }
 
+#[test]
+fn development_on_a_non_loopback_bind_refuses_to_boot_without_the_remote_opt_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_offrails_app"))
+        .args(["db", "status"])
+        .env("APP_ENV", "development")
+        .env("APP_BIND", "0.0.0.0")
+        .env_remove("APP_DEV_REMOTE")
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "development served on 0.0.0.0 without APP_DEV_REMOTE"
+    );
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("APP_DEV_REMOTE"), "{err}");
+}
+
 /// An unset `APP_ENV` is an error, never a default: run the binary in a directory with no `.env`,
 /// so the fallback has nothing to load (config.rs).
 #[test]
