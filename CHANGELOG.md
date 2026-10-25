@@ -1,5 +1,7 @@
 # Changelog
 
+Each release section below has four parts, in this order: **What's new** (the gist), **Breaking changes** (what an existing app must act on), **Upgrading** (where the steps are) and **Full list of changes** (every entry, with the App migration steps written for agents).
+
 Each entry lists convention changes and what an existing app must do about them. `/offrails:upgrade` reads this file, so write the **App migration** notes as instructions for an agent.
 
 Every release section has the same shape, in this order, because `tools/release/release.sh` copies it verbatim into the GitHub Release: **What's new** (4–6 plain bullets: what you can do now and why it matters), **Breaking changes** (what an existing app must act on, or "None."), **Upgrading** (a pointer to the ordered steps and [upgrade](generators/upgrade.md)), then **Full list of changes** (the detailed entries with their App migration notes). Subsections are `###`, so the release script's `## <version> (` heading match still finds the section's end.
