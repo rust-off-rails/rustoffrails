@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use axum::{
     Router,
-    extract::DefaultBodyLimit,
-    http::{HeaderName, StatusCode},
-    middleware::{from_fn, from_fn_with_state, map_response},
-    response::IntoResponse,
+    extract::{DefaultBodyLimit, Request},
+    http::{HeaderName, Method, StatusCode, header},
+    middleware::{Next, from_fn, from_fn_with_state, map_response},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use tower_http::{
@@ -26,7 +26,7 @@ use tower_http::{
 use crate::{
     controllers::{dev, errors, health, home, meta, migrations, theme},
     error::{self, AppError},
-    kernel::{assets, flash, hosts, redact, security},
+    kernel::{assets, flash, hosts, redact, security, webhook},
     state::AppState,
 };
 
@@ -52,6 +52,21 @@ impl Access {
             Access::Admin => "admin",
             Access::Dev => "dev",
         }
+    }
+}
+
+async fn csrf_evidence(req: Request, next: Next) -> Response {
+    let safe = matches!(
+        req.method(),
+        &Method::GET | &Method::HEAD | &Method::OPTIONS
+    );
+    let has_cookie = req.headers().contains_key(header::COOKIE);
+    let has_evidence =
+        req.headers().contains_key("sec-fetch-site") || req.headers().contains_key(header::ORIGIN);
+    if safe || !has_cookie || has_evidence || webhook::is_registered(req.uri().path()) {
+        next.run(req).await
+    } else {
+        AppError::Forbidden.into_response()
     }
 }
 
@@ -88,7 +103,9 @@ pub fn router(state: AppState) -> anyhow::Result<Router> {
         // The same app on plain http beside the TLS port (development only).
         csrf = csrf.add_trusted_origin(format!("http://localhost:{port}"))?;
     }
-    let csrf = csrf.with_rejection_response(|_| AppError::Forbidden.into_response());
+    let csrf = csrf
+        .with_insecure_bypass(|_, uri| webhook::is_registered(uri.path()))
+        .with_rejection_response(|_| AppError::Forbidden.into_response());
 
     let x_request_id = HeaderName::from_static("x-request-id");
     let app = app
@@ -106,6 +123,7 @@ pub fn router(state: AppState) -> anyhow::Result<Router> {
     Ok(app
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .layer(from_fn(flash::middleware))
+        .layer(from_fn(csrf_evidence))
         .layer(csrf)
         // A panic becomes a shaped 500, so it sits inside `shape_errors`.
         .layer(CatchPanicLayer::custom(error::panic_response))

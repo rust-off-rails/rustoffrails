@@ -37,7 +37,7 @@ No tokens. Modern browsers say where a request came from, and sessions use `Same
 
 1. `Origin` exactly matches a trusted origin. We trust `APP_URL`.
 2. `Sec-Fetch-Site` is `same-origin` or `none`.
-3. Neither `Sec-Fetch-Site` nor `Origin` is present (a non-browser client; cookies + SameSite still protect browsers).
+3. Neither `Sec-Fetch-Site` nor `Origin` is present, **and the request carries no cookie** (a non-browser client; a cookie-authenticated request with neither header gets 403 from the `csrf_evidence` middleware in `routes.rs`).
 4. `Origin`'s host:port equals the request's `Host`.
 
 Everything else gets 403.
@@ -45,18 +45,18 @@ Everything else gets 403.
 ```rust
 let csrf = CsrfLayer::new()
     .add_trusted_origin(&config.app_url)?                                   // validated: returns an error for a bad APP_URL
-    .with_insecure_bypass(|_, uri| uri.path().starts_with("/webhooks/"))   // webhooks verify the provider's signature instead (below)
+    .with_insecure_bypass(|_, uri| kernel::webhook::is_registered(uri.path()))   // exactly the registered webhook paths; each verifies its signature (below)
     .with_rejection_response(|_| AppError::Forbidden.into_response());     // shaped like every other 403 (errors-and-logging.md)
 ```
 
-- Safe methods **must not change state**. This whole design depends on it.
-- **Every `/webhooks/…` route verifies the provider's signature, or it doesn't exist.** The bypass removes CSRF from that prefix, so a handler there with cookie auth or no check is an open POST. Rules: read the **raw body** before parsing; compute the HMAC the provider documents (Stripe: `t=…,v1=…` over `"{t}.{body}"`; GitHub: `X-Hub-Signature-256`) with the secret from `Config`; compare with `constant_time_eq`, never `==`; refuse a timestamp older than 5 minutes when the scheme has one; store the event id and `on_conflict_do_nothing` so a replayed delivery is a no-op; return 2xx fast and do the work in a job. Test: a valid signature is accepted, a tampered body, a wrong secret, a stale timestamp and a missing header are all 401, and the same event id twice creates one record.
+- Safe methods **must not change state**. This whole design depends on it. A guard test (`get_handlers_do_not_write_to_the_database`) scans every `GET` handler's body for database writes; exempt a line only with `// writes: <reason>` when the write is the point.
+- **Every webhook route verifies the provider's signature, or it doesn't exist.** Mount it with `kernel::webhook::route(path, webhook::Webhook::stripe(secret), handler)` (or `::github(secret)`) and add the exact path to `webhook::REGISTERED_PATHS` in the same change; a test keeps mounts and the registry in sync. The bypass covers exactly those paths, never a prefix, and the registration runs the verifier before the handler, so a handler there cannot forget the check. The verifier reads the **raw body**, computes the provider's HMAC (Stripe: `t=…,v1=…` over `"{t}.{body}"`; GitHub: `X-Hub-Signature-256`) with the secret from `Config`, compares in constant time, and refuses a timestamp older than 5 minutes. Inside the handler: store the event id and `on_conflict_do_nothing` so a replayed delivery is a no-op; return 2xx fast and do the work in a job. Test: a valid signature is accepted, a tampered body, a wrong secret, a stale timestamp and a missing header are all 401, and the same event id twice creates one record.
 - Behind a proxy, `Host` and `Origin` must reach the app unchanged (Fly, Kamal-proxy, Render and Railway do this by default). Otherwise only `Sec-Fetch-Site` protects you.
 - Tests: a `Sec-Fetch-Site: cross-site` POST and a foreign-`Origin` POST both get 403. `TestApp::post_form` sends `Sec-Fetch-Site: same-origin`, like a browser.
 
 ## The header matrix
 
-One middleware, `kernel/security.rs` (`security::middleware`), sets the headers. It sits **outside** `CatchPanicLayer` and the timeout in `routes.rs`, so panic 500s and timeout 503s get them too ([routing](routing.md#middleware)). It only fills in headers a handler didn't set, so a route can make a header *stricter* (the mailbox viewer's own CSP), never remove it.
+One middleware, `kernel/security.rs` (`security::middleware`), sets the headers. It sits **outside** `CatchPanicLayer` and the timeout in `routes.rs`, so panic 500s and timeout 503s get them too ([routing](routing.md#middleware)). It overwrites the matrix headers a handler set, so no handler can weaken them. The one exception is a sandboxed document response (the mailbox viewer's own CSP: `sandbox` with `default-src 'none'`), whose policy it keeps.
 
 | Header | Value | Notes |
 |--------|-------|-------|
@@ -158,11 +158,11 @@ See `storage.md`. In short: enforce a size limit per route (`DefaultBodyLimit`),
 
 So, in development only:
 
-1. **Bind loopback.** `serve` listens on `config.bind` (`APP_BIND`, default `127.0.0.1` in development, `0.0.0.0` in production: [config](config.md#where-serve-listens-app_bind-app_allowed_hosts-and-the-unset-app_env-warning)). A dev container sets `APP_BIND=0.0.0.0` so the published port works.
+1. **Bind loopback.** `serve` listens on `config.bind` (`APP_BIND`, default `127.0.0.1` in development, `0.0.0.0` in production: [config](config.md#where-serve-listens-app_bind-app_allowed_hosts-and-the-unset-app_env-warning)). A non-loopback bind in development is refused unless `APP_DEV_REMOTE=1`: a `Host` header is not authentication, and a LAN client can set `Host: localhost` by hand. A dev container sets both `APP_BIND=0.0.0.0` and `APP_DEV_REMOTE=1` so the published port works.
 2. **Check `Host`** (Rails' `HostAuthorization`). `kernel/hosts.rs` answers only `localhost`, `127.0.0.1`, `[::1]`, `*.localhost` (RFC 6761), `APP_URL`'s host and `APP_ALLOWED_HOSTS` entries (a leading `.` allows subdomains). Anything else gets a 403 page that says how to allow it. It runs **inside** the header-matrix middleware (the 403 carries the headers) and outside everything else, so no handler and no `/dev` page runs for a refused host ([routing](routing.md#middleware)). A request with no `Host` passes: a browser always sends one, and rebinding needs a browser. Production and test aren't checked: the platform's proxy routes by host, and an app answering any `Host` there exposes nothing that isn't public.
 3. **Refuse an unset `APP_ENV`.** `Config::from_env` reads `.env` first (bin/setup writes `APP_ENV=development` there), and if `APP_ENV` is still unset it fails with a message naming the fix. On a server an unset `APP_ENV` is a missing setting that would mount `/dev` and `/admin/jobs` without a login; a default is not a gate.
 
-To open the dev server from a phone or another machine, set both `APP_BIND=0.0.0.0` and `APP_ALLOWED_HOSTS=<the name or IP you'll type>`, and know that everyone on that network can then read your mailbox. A tunnel (`cloudflared`, `ngrok`) only needs `APP_ALLOWED_HOSTS=<tunnel host>` (or set `APP_URL` to it).
+To open the dev server from a phone or another machine, set `APP_BIND=0.0.0.0`, `APP_DEV_REMOTE=1` and `APP_ALLOWED_HOSTS=<the name or IP you'll type>`, and know that everyone on that network can then read your mailbox. A tunnel (`cloudflared`, `ngrok`) only needs `APP_ALLOWED_HOSTS=<tunnel host>` (or set `APP_URL` to it).
 
 `src/kernel/hosts.rs`, whole (from an app generated from these docs, 2026-10-16; axum 0.8.9):
 

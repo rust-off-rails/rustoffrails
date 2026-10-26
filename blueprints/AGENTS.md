@@ -31,7 +31,7 @@ Each line is a mistake an agent shipped. The check that catches it is in parenth
 - **NEVER tick an acceptance criterion without a test that cites its id,** or write a Security row without a test name (`offrails check`).
 - **NEVER edit `.offrails/` or delete a `docs/decisions.md` line.** Supersede it with a new line (`.offrails/workflow.md#decisions`).
 - **NEVER give an `id` or `*_id` a 32-bit column, or let the suite run only on SQLite.** `big_pk_auto`/`big_integer` and `i64`; `INT4` ids made every Postgres write a 500 behind a green SQLite suite (`offrails check` `[ids]`, `[postgres]`).
-- **NEVER bind development to `0.0.0.0` or drop the Host check to "make it work".** `/dev` has no login: the mailbox holds every sign-in link. A dev container or a phone sets `APP_BIND=0.0.0.0` and `APP_ALLOWED_HOSTS` on purpose (`offrails check` `[bind]`, `development_refuses_a_rebound_host_name`).
+- **NEVER bind development to `0.0.0.0` or drop the Host check to "make it work".** `/dev` has no login: the mailbox holds every sign-in link. A dev container or a phone sets `APP_BIND=0.0.0.0`, `APP_DEV_REMOTE=1` and `APP_ALLOWED_HOSTS` on purpose (`offrails check` `[bind]`, `development_refuses_a_rebound_host_name`).
 - **NEVER `pkill`/`killall`, or kill by name or pattern.** Stop the PID file you started: `kill "$(cat storage/pids/dev-$PORT.pid)"` for `bin/dev` (it stops its whole tree), `serve-$PORT.pid` for a plain `serve` (`.offrails/cli.md#running-the-app-from-an-agent`). Killing only `bin/dev`'s listener leaves its watchers running.
 
 ## You are an agent working on a Rust off Rails app

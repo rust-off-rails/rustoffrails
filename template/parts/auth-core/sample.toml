@@ -7,9 +7,7 @@ depends_on = ["mailer", "dev-mailbox"]
 extracted_from = "Rust off Rails apps"
 
 # Run in the app root, one per line, never with a version (cargo add picks it; read Cargo.lock).
-crates = [
-  "hmac",
-]
+crates = []
 
 [[wire]]
 file = "src/kernel/mod.rs"

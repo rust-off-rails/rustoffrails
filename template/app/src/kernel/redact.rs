@@ -103,6 +103,7 @@ fn path_with(path: &str, routes: &[&str]) -> String {
 pub fn text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut word = String::new();
+    let mut after_bearer = false;
     for c in s.chars() {
         if c.is_whitespace()
             || matches!(
@@ -110,14 +111,23 @@ pub fn text(s: &str) -> String {
                 '"' | '\'' | '<' | '>' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | '`'
             )
         {
-            out.push_str(&word_redacted(&word));
+            if after_bearer && !word.is_empty() {
+                out.push_str(REDACTED);
+            } else {
+                out.push_str(&word_redacted(&word));
+            }
+            after_bearer = word.eq_ignore_ascii_case("bearer");
             word.clear();
             out.push(c);
         } else {
             word.push(c);
         }
     }
-    out.push_str(&word_redacted(&word));
+    if after_bearer && !word.is_empty() {
+        out.push_str(REDACTED);
+    } else {
+        out.push_str(&word_redacted(&word));
+    }
     out
 }
 
@@ -181,10 +191,48 @@ fn query(q: &str) -> String {
 }
 
 fn is_secret_param(name: &str) -> bool {
-    let name = name.to_ascii_lowercase();
-    SECRET_PARAMS
-        .iter()
-        .any(|p| name == *p || name.ends_with(&format!("_{p}")))
+    const CONCEPTS: &[&str] = &[
+        "token",
+        "key",
+        "secret",
+        "password",
+        "passphrase",
+        "passcode",
+        "passwd",
+        "pwd",
+        "credential",
+        "credentials",
+        "signature",
+        "sig",
+        "otp",
+        "code",
+        "session",
+        "auth",
+        "bearer",
+        "private",
+    ];
+    let mut normalized = String::with_capacity(name.len() + 4);
+    let mut prev: Option<char> = None;
+    for c in name.chars() {
+        if c == '-' || c == ' ' || c == '.' {
+            normalized.push('_');
+        } else if c.is_ascii_uppercase() {
+            if prev.is_some_and(|p| p.is_ascii_lowercase() || p.is_ascii_digit()) {
+                normalized.push('_');
+            }
+            normalized.push(c.to_ascii_lowercase());
+        } else {
+            normalized.push(c.to_ascii_lowercase());
+        }
+        prev = Some(c);
+    }
+    if SECRET_PARAMS.iter().any(|p| normalized == *p) {
+        return true;
+    }
+    normalized
+        .split('_')
+        .filter(|t| !t.is_empty())
+        .any(|t| CONCEPTS.contains(&t))
 }
 
 /// Long, URL-safe, and not a lowercase slug: base64url tokens, hex digests, signed blobs.
@@ -265,6 +313,40 @@ mod tests {
         assert_eq!(
             text("postgres://u:p@db/app"),
             "postgres://[redacted]@db/app"
+        );
+    }
+
+    #[test]
+    fn secret_named_values_are_redacted_however_they_are_spelled() {
+        for (line, secret) in [
+            ("api-key=shortval", "shortval"),
+            ("apiKey=shortval", "shortval"),
+            ("access-token=shortval", "shortval"),
+            ("authToken=shortval", "shortval"),
+            ("clientSecret=shortval", "shortval"),
+            ("passwd=shortval", "shortval"),
+            ("credential=shortval", "shortval"),
+        ] {
+            let shown = text(&format!("connect failed: {line}"));
+            assert!(!shown.contains(secret), "{secret} leaked in {shown:?}");
+            assert!(shown.contains(REDACTED), "no redaction in {shown:?}");
+        }
+        let u: Uri = "/x?api-key=shortval&apiKey=shortval&page=2"
+            .parse()
+            .unwrap();
+        let shown = uri(&u);
+        assert!(!shown.contains("shortval"), "leaked in {shown:?}");
+        assert!(shown.contains("page=2"), "plain params stay: {shown:?}");
+    }
+
+    #[test]
+    fn bearer_credentials_and_plain_lowercase_tokens_are_redacted() {
+        let shown = text("Authorization: Bearer abc123short retrying");
+        assert!(!shown.contains("abc123short"), "leaked in {shown:?}");
+        let shown = text("session=abcdefghijklmnopqrstuvwx");
+        assert!(
+            !shown.contains("abcdefghijklmnopqrstuvwx"),
+            "leaked in {shown:?}"
         );
     }
 

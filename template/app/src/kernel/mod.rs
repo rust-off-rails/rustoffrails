@@ -3,6 +3,7 @@
 pub mod assets;
 pub mod cache;
 pub mod cookie;
+pub mod crypto;
 pub mod css;
 pub mod db;
 pub mod flash;
@@ -14,4 +15,5 @@ pub mod security;
 pub mod theme;
 pub mod tls;
 pub mod ui;
+pub mod webhook;
 // samples: kernel mods
