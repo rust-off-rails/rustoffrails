@@ -85,7 +85,8 @@ pub const ERROR_BURST: f32 = 3.0; // APP: your app's "something is on fire" rate
 
 pub struct Collector {
     burst: bool,
-    sys: System,
+    // None when sysinfo can't read this platform: the process figures stay at zero.
+    sys: Option<System>,
     pid: Option<Pid>,
     busy: Duration,
     at: Instant,
@@ -101,7 +102,7 @@ impl Collector {
     pub fn new() -> Self {
         let mut c = Self {
             burst: false,
-            sys: System::new(),
+            sys: System::new().ok(),
             pid: sysinfo::get_current_pid().ok(),
             busy: Duration::ZERO,
             at: Instant::now(),
@@ -113,8 +114,8 @@ impl Collector {
     }
 
     fn refresh(&mut self) {
-        if let Some(pid) = self.pid {
-            self.sys.refresh_processes_specifics(
+        if let (Some(pid), Some(sys)) = (self.pid, self.sys.as_mut()) {
+            sys.refresh_processes_specifics(
                 ProcessesToUpdate::Some(&[pid]),
                 false,
                 ProcessRefreshKind::nothing().with_memory().with_cpu(),
@@ -125,7 +126,7 @@ impl Collector {
     /// One sample: the process and runtime now, plus the requests and SQL since the last one.
     pub fn sample(&mut self, db: &DatabaseConnection) -> (Sample, Tick) {
         self.refresh();
-        let process = self.pid.and_then(|pid| self.sys.process(pid));
+        let process = self.pid.zip(self.sys.as_ref()).and_then(|(pid, sys)| sys.process(pid));
         let elapsed = self.at.elapsed().max(Duration::from_millis(1));
         self.at = Instant::now();
         let (workers, tasks, queue) = tokio::runtime::Handle::try_current()
