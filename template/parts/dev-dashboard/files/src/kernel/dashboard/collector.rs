@@ -126,7 +126,10 @@ impl Collector {
     /// One sample: the process and runtime now, plus the requests and SQL since the last one.
     pub fn sample(&mut self, db: &DatabaseConnection) -> (Sample, Tick) {
         self.refresh();
-        let process = self.pid.zip(self.sys.as_ref()).and_then(|(pid, sys)| sys.process(pid));
+        let process = self
+            .pid
+            .zip(self.sys.as_ref())
+            .and_then(|(pid, sys)| sys.process(pid));
         let elapsed = self.at.elapsed().max(Duration::from_millis(1));
         self.at = Instant::now();
         let (workers, tasks, queue) = tokio::runtime::Handle::try_current()
