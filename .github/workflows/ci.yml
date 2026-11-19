@@ -9,12 +9,12 @@ jobs:
   docs-and-plugin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Markdown links and anchors resolve
         run: python3 tools/ci/check-links.py
       - name: Plugin hooks behave
         run: bash tools/ci/test-hooks.sh
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - name: Plugin manifests, skills and hooks validate
@@ -24,7 +24,7 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: gitleaks (full history)
@@ -32,7 +32,7 @@ jobs:
   installer:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: shellcheck (installer, offrails command, offrails-check, generators' wrappers, release + CI scripts)
         run: shellcheck -s sh install.sh tools/offrails tools/offrails-check tools/new-app.sh tools/sync-parts.sh tools/release/release.sh tools/ci/test-install.sh tools/ci/test-offrails-check.sh tools/ci/test-template.sh tools/ci/memory-budget.sh tools/browser-smoke/run.sh
       - name: offrails-check passes a complete app and fails each broken fixture with its message
@@ -52,13 +52,15 @@ jobs:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with: { components: "rustfmt, clippy" }
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with: { toolchain: stable, components: "rustfmt, clippy" }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { workspaces: "template/app -> ${{ runner.temp }}/template-ci/target" }
-      - uses: taiki-e/install-action@cargo-deny
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with: { tool: cargo-deny }
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with: { tool: nextest }
       - name: Generate bare, all parts, and parts added one by one; fmt, clippy, tests on SQLite and Postgres, offrails-check, memory budget
         run: OFFRAILS_CI_DIR="${{ runner.temp }}/template-ci" sh tools/ci/test-template.sh
   template-os:                  # the generators and the app build and pass their SQLite suite on every OS
@@ -71,12 +73,13 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with: { components: "rustfmt, clippy" }
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with: { toolchain: stable, components: "rustfmt, clippy" }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { workspaces: "${{ runner.temp }}/gen-app" }
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with: { tool: nextest }
       - name: offrails-gen tests
         run: cargo test -q --manifest-path tools/offrails-gen/Cargo.toml
       - name: Generate the app (parts=${{ matrix.parts }})

@@ -1,0 +1,23 @@
+# Weekly update PRs. The template's lock file is what every new app starts from, so its updates
+# (security ones especially) should reach a PR without anyone remembering to look.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /template/app
+    schedule: { interval: weekly, day: monday }
+    groups:
+      template-patch:
+        update-types: [patch, minor]
+  - package-ecosystem: cargo
+    directory: /tools/offrails-gen
+    schedule: { interval: weekly, day: monday }
+    groups:
+      generator-patch:
+        update-types: [patch, minor]
+  # Actions are pinned by commit hash (the version is in the comment); this keeps the pins current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
