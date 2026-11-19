@@ -14,6 +14,7 @@ ignore = [
   # Triaged exceptions only, each with a reason and a review date:
   # { id = "RUSTSEC-YYYY-NNNN", reason = "…, not reachable because …; recheck 2026-12-01" },
   { id = "RUSTSEC-2026-0374", reason = "basic-toml is unmaintained (no safe upgrade); it comes in only through askama_derive, which reads askama.toml at compile time, so no deployed binary runs it; recheck 2027-01-25" },
+  { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained (no safe upgrade); sea-orm and sqlx map every timestamp column through it, so replacing it means moving the whole stack to time or jiff together; no known vulnerability; recheck 2027-02-19" },
 ]
 
 [licenses]

@@ -1,0 +1,23 @@
+name: Advisories
+# CI runs on push, so a RustSec advisory published between releases fails nothing until the next
+# commit. This checks the lock files new apps start from (the template) and the generator twice a
+# week, and fails where the maintainers see it before a user's first `cargo deny` does.
+on:
+  schedule:
+    - cron: "41 5 * * 1,4"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [template/app, tools/offrails-gen]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@cargo-deny
+      - name: RustSec advisories in ${{ matrix.dir }}
+        working-directory: ${{ matrix.dir }}
+        run: cargo deny --locked check advisories

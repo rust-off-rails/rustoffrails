@@ -6,6 +6,33 @@ Each entry lists convention changes and what an existing app must do about them.
 
 Every release section has the same shape, in this order, because `tools/release/release.sh` copies it verbatim into the GitHub Release: **What's new** (4–6 plain bullets: what you can do now and why it matters), **Breaking changes** (what an existing app must act on, or "None."), **Upgrading** (a pointer to the ordered steps and [upgrade](generators/upgrade.md)), then **Full list of changes** (the detailed entries with their App migration notes). Subsections are `###`, so the release script's `## <version> (` heading match still finds the section's end.
 
+## 0.7.5 (2026-11-19)
+
+### What's new
+
+- **SQLite 3.54.** The template's lock file moves to sqlx 0.9.1, which bundles SQLite 3.54.1 and fixes RUSTSEC-2026-0459: a database file opened with a crafted `-wal` file could return stale bytes from the process's memory.
+- **Advisories are checked twice a week, not just on push.** A scheduled job runs `cargo deny` on the template and the generator, so an advisory published between releases fails the framework's CI within days instead of waiting for the next commit.
+- **Apps with the mailer part or the Markdown snippet: update lettre and ammonia.** New apps already get the fixed versions, because the part and the snippet `cargo add` without a version. Apps made earlier keep their lock files: lettre 0.11.24 fixes six SMTP advisories, including command injection and STARTTLS reply forgery, and ammonia 4.2.5 fixes an XSS in sanitized Markdown.
+- **chrono is triaged.** RustSec now lists chrono as unmaintained. sea-orm and sqlx map every timestamp through it, so `deny.toml` records the reason and a recheck date instead of failing every app's check.
+
+### Breaking changes
+
+None.
+
+### Upgrading
+
+**Upgrading an app to 0.7.5, in order** (each step's Detect/Converge/Prove is in the entry it names below; [upgrade](generators/upgrade.md) is the whole procedure):
+
+1. Dependencies: update sqlx and triage chrono (Dependency advisories, below).
+2. Parts and snippets: update lettre, ammonia and pulldown-cmark if the app has them (Advisories in parts and snippets, below).
+3. `cargo offrails verify --fast`.
+
+### Full list of changes
+
+- **Dependency advisories.** `cargo deny` on a fresh 0.7.4 app failed on two new advisories. The first was RUSTSEC-2026-0459 (`libsqlite3-sys` 0.37 bundles SQLite before 3.54.0, which can return uninitialized page-cache memory when a database is opened with a `-wal` file of a different page size; this matters only if a less trusted party can write the database files). The second was RUSTSEC-2026-0543 (`chrono` is unmaintained, with no patched release). The template's lock file moves to sqlx 0.9.1 and libsqlite3-sys 0.40.0 (SQLite 3.54.1). It also moves rustix to 1.1.6 (RUSTSEC-2026-0486, reached only by test dependencies) and arrow to 60.1.0 (RUSTSEC-2026-0442, in the lock file through an optional feature the template doesn't build). `chrono` is the date type behind every SeaORM and sqlx timestamp column, and it has no known vulnerability, so `deny.toml` ignores it with that reason and a recheck date. Moving to `time` or `jiff` would be its own release. *App migration:* *Detect:* `cargo deny --locked check advisories` names RUSTSEC-2026-0459 or RUSTSEC-2026-0543. *Converge:* `cargo update -p sqlx -p libsqlite3-sys -p rustix`; if it still names RUSTSEC-2026-0543, add `{ id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained (no safe upgrade); sea-orm and sqlx map every timestamp column through it, so replacing it means moving the whole stack to time or jiff together; no known vulnerability; recheck 2027-02-19" }` to `[advisories] ignore` in `deny.toml`. *Prove it:* `cargo deny --locked check` passes and `cargo offrails verify --fast` is green.
+- **Advisories in parts and snippets.** The mailer part (`lettre`) and the `markdown` snippet (`pulldown-cmark`, `ammonia`) add their crates with `cargo add` and no version, so an app made today resolves fixed releases. An app made before them has: lettre before 0.11.24 (RUSTSEC-2026-0560 to -0565: SMTP command injection through a bare CR or LF without dot-stuffing, STARTTLS reply injection, a quoted local part delivered to a different address, a malicious server exhausting memory, two panics), ammonia before 4.2.5 (RUSTSEC-2026-0533: mutation XSS through embedded SVG and MathML, which matters wherever users write Markdown) and pulldown-cmark before 0.13.6 (RUSTSEC-2026-0414 and -0433, only with `ENABLE_WIKILINKS`, which the snippet doesn't set). *App migration:* *Detect:* `cargo deny --locked check advisories` names any of them. *Converge:* `cargo update -p lettre -p ammonia -p pulldown-cmark` (skip the ones `cargo tree -i <crate>` doesn't find). *Prove it:* `cargo deny --locked check` passes and `cargo offrails verify --fast` is green.
+- **CI: scheduled advisory check** (`.github/workflows/advisories.yml`). `cargo deny --locked check advisories` runs on `template/app` and `tools/offrails-gen` every Monday and Thursday, and on demand. The push-triggered CI already ran it, but only when someone pushed, so RUSTSEC-2026-0459 sat in the template's lock file for three weeks without failing anything.
+
 ## 0.7.4 (2026-10-25)
 
 ### What's new
