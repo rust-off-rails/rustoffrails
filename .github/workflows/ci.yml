@@ -40,6 +40,13 @@ jobs:
       - name: Install into this runner and clean containers (ubuntu:24.04, debian:trixie-slim)
         run: tools/ci/test-install.sh
   template:                     # the app template and every part, on both databases (tools/ci/test-template.sh)
+    # One job per target of test-template.sh: each generates its own apps, so they run side by side
+    # (about 20 minutes instead of 70 in one job).
+    name: template (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [gen, bare, all, incremental, generators, snippets, prove, update-part]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -56,13 +63,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with: { toolchain: stable, components: "rustfmt, clippy" }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with: { workspaces: "template/app -> ${{ runner.temp }}/template-ci/target" }
+        # A cache per target (each builds a different set of parts), saved from main only so PR runs
+        # don't crowd the repository's cache quota; PRs restore main's.
+        with:
+          workspaces: "template/app -> ${{ runner.temp }}/template-ci/target"
+          key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with: { tool: cargo-deny }
       - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with: { tool: nextest }
-      - name: Generate bare, all parts, and parts added one by one; fmt, clippy, tests on SQLite and Postgres, offrails-check, memory budget
-        run: OFFRAILS_CI_DIR="${{ runner.temp }}/template-ci" sh tools/ci/test-template.sh
+      - name: test-template.sh ${{ matrix.target }} (generate, fmt, clippy, tests on SQLite and Postgres, offrails-check)
+        run: OFFRAILS_CI_DIR="${{ runner.temp }}/template-ci" sh tools/ci/test-template.sh ${{ matrix.target }}
   template-os:                  # the generators and the app build and pass their SQLite suite on every OS
     strategy:
       fail-fast: false
