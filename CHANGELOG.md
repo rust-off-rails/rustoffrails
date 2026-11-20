@@ -6,7 +6,7 @@ Each entry lists convention changes and what an existing app must do about them.
 
 Every release section has the same shape, in this order, because `tools/release/release.sh` copies it verbatim into the GitHub Release: **What's new** (4–6 plain bullets: what you can do now and why it matters), **Breaking changes** (what an existing app must act on, or "None."), **Upgrading** (a pointer to the ordered steps and [upgrade](generators/upgrade.md)), then **Full list of changes** (the detailed entries with their App migration notes). Subsections are `###`, so the release script's `## <version> (` heading match still finds the section's end.
 
-## 0.7.5 (2026-11-19)
+## 0.7.5 (2026-11-20)
 
 ### What's new
 
@@ -15,6 +15,7 @@ Every release section has the same shape, in this order, because `tools/release/
 - **Apps with the mailer part or the Markdown snippet: update lettre and ammonia.** New apps already get the fixed versions, because the part and the snippet `cargo add` without a version. Apps made earlier keep their lock files: lettre 0.11.24 fixes six SMTP advisories, including command injection and STARTTLS reply forgery, and ammonia 4.2.5 fixes an XSS in sanitized Markdown.
 - **New apps with the dev dashboard compile again.** sysinfo 0.40 changed two calls the dashboard makes, and the part adds sysinfo without a version, so every new app with the dashboard failed to build.
 - **chrono is triaged.** RustSec now lists chrono as unmaintained. sea-orm and sqlx map every timestamp through it, so `deny.toml` records the reason and a recheck date instead of failing every app's check.
+- **New apps start on axum-server 0.9 and current patch releases.** Dependabot now watches the template's dependencies, and its first updates are in: axum-server 0.9.2 (direct TLS), tokio 1.54.1, clap 4.6.8, rand 0.10.4 and uuid 1.29.3. The template's code builds unchanged. Existing apps don't have to do anything.
 
 ### Breaking changes
 
@@ -27,7 +28,8 @@ None.
 1. Dependencies: update sqlx and triage chrono (Dependency advisories, below).
 2. Dev dashboard: move to sysinfo 0.40 if the app has the part (Dev dashboard on sysinfo 0.40, below).
 3. Parts and snippets: update lettre, ammonia and pulldown-cmark if the app has them (Advisories in parts and snippets, below).
-4. `cargo offrails verify --fast`.
+4. Optional: move to the template's dependency versions (Template dependency updates, below).
+5. `cargo offrails verify --fast`.
 
 ### Full list of changes
 
@@ -35,6 +37,8 @@ None.
 - **Dev dashboard on sysinfo 0.40** (`src/kernel/dashboard/collector.rs`, `web.rs`; parts synced from samples 001c7f9). sysinfo 0.40 makes `System::new()` and `System::name()` return `Result`. The part adds sysinfo with no version, so `new --parts all` (or `add dev-dashboard`) failed to compile with E0308 and E0593. The collector now holds an `Option<System>`: if sysinfo can't initialize on a platform, the process figures read zero instead of the app panicking. *App migration:* only apps that move to sysinfo 0.40 need this, and their lock files keep 0.39 until they do. *Detect:* `cargo tree -i sysinfo` shows 0.40, and `cargo check` fails in `src/kernel/dashboard/`. *Converge:* `cargo offrails update-part dev-dashboard --framework $FW`, or copy the two changes from `$FW/template/parts/dev-dashboard/files/src/kernel/dashboard/collector.rs` (`sys: Option<System>`, `System::new().ok()`, the `refresh` and `sample` lookups through it) and `web.rs` (`unwrap_or_else(|_| …)`). To move an app on 0.39 forward: `cargo remove sysinfo && cargo add sysinfo --no-default-features --features system`. *Prove it:* `cargo offrails verify --fast`.
 - **Advisories in parts and snippets.** The mailer part (`lettre`) and the `markdown` snippet (`pulldown-cmark`, `ammonia`) add their crates with `cargo add` and no version, so an app made today resolves fixed releases. An app made before them has: lettre before 0.11.24 (RUSTSEC-2026-0560 to -0565: SMTP command injection through a bare CR or LF without dot-stuffing, STARTTLS reply injection, a quoted local part delivered to a different address, a malicious server exhausting memory, two panics), ammonia before 4.2.5 (RUSTSEC-2026-0533: mutation XSS through embedded SVG and MathML, which matters wherever users write Markdown) and pulldown-cmark before 0.13.6 (RUSTSEC-2026-0414 and -0433, only with `ENABLE_WIKILINKS`, which the snippet doesn't set). *App migration:* *Detect:* `cargo deny --locked check advisories` names any of them. *Converge:* `cargo update -p lettre -p ammonia -p pulldown-cmark` (skip the ones `cargo tree -i <crate>` doesn't find). *Prove it:* `cargo deny --locked check` passes and `cargo offrails verify --fast` is green.
 - **CI: scheduled advisory check** (`.github/workflows/advisories.yml`). `cargo deny --locked check advisories` runs on `template/app` and `tools/offrails-gen` every Monday and Thursday, and on demand. The push-triggered CI already ran it, but only when someone pushed, so RUSTSEC-2026-0459 sat in the template's lock file for three weeks without failing anything.
+- **Template dependency updates** (`template/app/Cargo.toml`, `Cargo.lock`). axum-server 0.8.0 to 0.9.2, which `serve` uses for direct TLS (`APP_TLS_CERT`/`APP_TLS_KEY`); `main.rs` and `kernel/tls.rs` compile and pass their tests unchanged, and the code in [deployment](guides/deployment.md#direct-tls-optional) still matches. Patch releases: tokio 1.54.1, clap 4.6.8, rand 0.10.4, uuid 1.29.3. *App migration:* optional; nothing is fixed by it. *Detect:* `cargo tree -i axum-server --depth 0` shows 0.8. *Converge:* `cargo add axum-server@0.9 --features tls-rustls && cargo update -p tokio -p clap -p rand -p uuid`. *Prove it:* `cargo offrails verify --fast`, and with TLS set, `curl -sk -o /dev/null -w '%{http_version}\n' https://localhost:<port>/up` prints `2`.
+- **CI: actions pinned, Dependabot, CodeQL, parallel template jobs.** Every GitHub Action is pinned by commit hash. Dependabot opens weekly PRs for the template's and the generator's crates and for the actions. CodeQL scans the Rust code and the workflows on every PR and weekly. The `template` job runs one job per `test-template.sh` target, so CI takes about 20 minutes instead of about 70. None of this changes what an app gets.
 
 ## 0.7.4 (2026-10-25)
 
