@@ -2894,7 +2894,7 @@ async fn config_page(
             "OS",
             format!(
                 "{} {}",
-                sysinfo::System::name().unwrap_or_else(|| std::env::consts::OS.into()),
+                sysinfo::System::name().unwrap_or_else(|_| std::env::consts::OS.into()),
                 sysinfo::System::os_version().unwrap_or_default()
             ),
         ),
