@@ -1,12 +1,10 @@
-## What changed and why
+## What changes
 
-<!-- Link the issue. Remember: contributions are intent + evidence; the code/docs are written by your agent. -->
+<!-- What was wrong or missing, and what this does about it. Link the issue: "Fixes #123". -->
 
-## Evidence (required for doc changes; see CONTRIBUTING.md)
+## How you know it works
 
-- [ ] I built or changed a real app from the corrected docs (what, with which agent):
-- [ ] Definition of Done green on SQLite **and** Postgres (paste the summary):
-- [ ] Crate/package versions verified against:
-- [ ] `CHANGELOG.md` → `## Unreleased` entry with reconcile-style **App migration** steps (if apps are affected)
-- [ ] `claude plugin validate . --strict` passes, and every link resolves
-- [ ] No security rule weakened (or: a security review is included)
+<!-- The commands you ran and what you saw. For a doc fix: what you built from the corrected docs, with which agent, and the Definition of Done on SQLite and Postgres. Say what you couldn't check. "Tests pass" alone isn't enough. -->
+
+- [ ] `CHANGELOG.md` entry under `## Unreleased`, with **App migration** steps if existing apps are affected (or: not needed, because ...)
+- [ ] No security rule weakened (or: why, and how it was reviewed)
