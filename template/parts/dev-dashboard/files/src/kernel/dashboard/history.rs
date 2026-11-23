@@ -570,9 +570,11 @@ fn restrict(path: &Path) {
 }
 
 async fn connect(path: &Path, writable: bool) -> anyhow::Result<DatabaseConnection> {
+    // WHY forward slashes: url 2.5.9 rejects `sqlite://C:\...` (InvalidPort), and SQLite on
+    // Windows takes `C:/...` just the same.
     let url = format!(
         "sqlite://{}?mode={}",
-        path.display(),
+        path.display().to_string().replace('\\', "/"),
         if writable { "rwc" } else { "ro" }
     );
     let mut opts = ConnectOptions::new(url);

@@ -187,7 +187,11 @@ async fn concurrent_read_then_write_transactions_do_not_fail_with_database_is_lo
     let dir = tempfile::tempdir().unwrap();
     let url = format!(
         "sqlite://{}?mode=rwc",
-        dir.path().join("t.sqlite3").display()
+        dir.path()
+            .join("t.sqlite3")
+            .display()
+            .to_string()
+            .replace('\\', "/")
     );
     let db = kernel::db::connect(&url, 8).await.unwrap();
     db.execute_unprepared("CREATE TABLE counter (n INTEGER NOT NULL)")
