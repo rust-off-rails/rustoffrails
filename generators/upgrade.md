@@ -95,7 +95,7 @@ cargo run -q --manifest-path "$FW/tools/offrails-gen/Cargo.toml" --target-dir "t
 
 The target directory is the release's own (`target/offrails-gen-0.7.3`), never `target/offrails-gen`: a release whose files are older than the binary cached there would reuse the previous release's offrails-gen (seen as `update-part`: "unknown command"). Delete the old ones when you're done (`rm -rf target/offrails-gen-*`).
 
-(Or `rsync -a --delete --exclude /.git --exclude /.claude-plugin --exclude /skills --exclude /hooks --exclude /evals --exclude /brand --exclude /.in_use --exclude /media "$FW"/ .offrails/` then `date -u +"vendored %F" >> .offrails/VERSION`.) An app from before 0.7.1 also gets the `cargo offrails` alias: copy `.offrails/template/app/.cargo/config.toml`'s `[alias]` into the app's `.cargo/config.toml`, and `.gitattributes` from the same place.
+(Or `rsync -a --delete --exclude /.git --exclude /.claude-plugin --exclude /skills --exclude /hooks --exclude /evals --exclude /brand --exclude /.in_use --exclude /media --exclude /.sha256 "$FW"/ .offrails/` then `date -u +"vendored %F" >> .offrails/VERSION`.) An app from before 0.7.1 also gets the `cargo offrails` alias: copy `.offrails/template/app/.cargo/config.toml`'s `[alias]` into the app's `.cargo/config.toml`, and `.gitattributes` from the same place.
 
 ## 7. Apply in vertical slices
 

@@ -6,6 +6,24 @@ Each entry lists convention changes and what an existing app must do about them.
 
 Every release section has the same shape, in this order, because `tools/release/release.sh` copies it verbatim into the GitHub Release: **What's new** (4–6 plain bullets: what you can do now and why it matters), **Breaking changes** (what an existing app must act on, or "None."), **Upgrading** (a pointer to the ordered steps and [upgrade](generators/upgrade.md)), then **Full list of changes** (the detailed entries with their App migration notes). Subsections are `###`, so the release script's `## <version> (` heading match still finds the section's end.
 
+## Unreleased
+
+### What's new
+
+- **No false drift notice after installing with the installer** ([#15](https://github.com/rust-off-rails/rustoffrails/issues/15)).
+
+### Breaking changes
+
+None.
+
+### Upgrading
+
+Nothing to do; the step below is optional tidying.
+
+### Full list of changes
+
+- **Drift notice on identical docs** (`hooks/fingerprint.sh`, `tools/offrails-gen/src/newapp.rs`; [#15](https://github.com/rust-off-rails/rustoffrails/issues/15)). `install.sh` writes the tarball checksum to `~/.offrails/<version>/.sha256`, vendoring from there copied it into `.offrails/`, and the fingerprint counted it, so the session-start hook said ".offrails/ and the installed plugin are both <version>, but their docs differ" when they didn't (found upgrading a real app from 0.6.2 to 0.7.5). The fingerprint now skips a top-level `.sha256`, and vendoring (`offrails-gen vendor`, `new`, and the `rsync` line in [upgrade](generators/upgrade.md)) no longer copies it. Tests: `tools/ci/test-hooks.sh` (the fingerprint ignores `.sha256` and `VERSION`, and still sees a changed doc) and `vendoring_skips_the_installer_checksum`. *App migration (optional):* *Detect:* `test -f .offrails/.sha256`. *Converge:* `rm .offrails/.sha256` (the next re-vendor drops it anyway). *Prove it:* a new session prints no drift notice when the app vendors the installed release.
+
 ## 0.7.5 (2026-11-20)
 
 ### What's new
