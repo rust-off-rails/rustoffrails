@@ -1,5 +1,5 @@
 name: "Bug"
-description: The installer, the offrails CLI, a generator or the template app is broken. For wrong docs, use "Doc bug".
+description: The installer, the offrails CLI, a generator or the template app is broken. For wrong docs, use "Doc bug"; for a bug in a part, open it in rust-off-rails/samples.
 labels: ["bug"]
 body:
   - type: input
@@ -8,7 +8,7 @@ body:
     validations: { required: true }
   - type: input
     id: system
-    attributes: { label: System, placeholder: "macOS 16 on M2, Rust 1.92 / Ubuntu 24.04 / Windows 11" }
+    attributes: { label: System, placeholder: "macOS 26 on M2, Rust 1.92 / Ubuntu 24.04 / Windows 11" }
   - type: textarea
     id: what
     attributes:
