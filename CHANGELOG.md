@@ -13,6 +13,7 @@ Every release section has the same shape, in this order, because `tools/release/
 - **No false drift notice after installing with the installer** ([#15](https://github.com/rust-off-rails/rustoffrails/issues/15)).
 - **Upgrade steps that work for apps built from the guides before 0.7.1** ([#16](https://github.com/rust-off-rails/rustoffrails/issues/16)).
 - **stack.md's version table matches the template again** ([#22](https://github.com/rust-off-rails/rustoffrails/issues/22)).
+- **Template on `url` 2.5.9 and `cookie` 0.18.3** for two RustSec advisories ([#27](https://github.com/rust-off-rails/rustoffrails/pull/27)).
 
 ### Breaking changes
 
@@ -20,13 +21,14 @@ None.
 
 ### Upgrading
 
-Nothing to do; the step below is optional tidying.
+Run `cargo update -p url -p cookie` (the advisories entry below). The `.sha256` step is optional tidying.
 
 ### Full list of changes
 
 - **Drift notice on identical docs** (`hooks/fingerprint.sh`, `tools/offrails-gen/src/newapp.rs`; [#15](https://github.com/rust-off-rails/rustoffrails/issues/15)). `install.sh` writes the tarball checksum to `~/.offrails/<version>/.sha256`, vendoring from there copied it into `.offrails/`, and the fingerprint counted it, so the session-start hook said ".offrails/ and the installed plugin are both <version>, but their docs differ" when they didn't (found upgrading a real app from 0.6.2 to 0.7.5). The fingerprint now skips a top-level `.sha256`, and vendoring (`offrails-gen vendor`, `new`, and the `rsync` line in [upgrade](generators/upgrade.md)) no longer copies it. Tests: `tools/ci/test-hooks.sh` (the fingerprint ignores `.sha256` and `VERSION`, and still sees a changed doc) and `vendoring_skips_the_installer_checksum`. *App migration (optional):* *Detect:* `test -f .offrails/.sha256`. *Converge:* `rm .offrails/.sha256` (the next re-vendor drops it anyway). *Prove it:* a new session prints no drift notice when the app vendors the installed release.
 - **Upgrade steps for apps built from the guides before 0.7.1** ([#16](https://github.com/rust-off-rails/rustoffrails/issues/16)). Two migration steps assumed the template's file layout (found upgrading a real app from 0.6.2 to 0.7.5). 0.7.4's IPv6 rate-limit step grepped one file (`src/controllers/application.rs`) for `rate_limit_ip`; it now searches `src/` and says to add the function wherever the app defines `ClientIp`, importing it from there in the copied test. 0.7.2's ordered list never added the `cargo offrails` alias, which every later *Prove it* step runs; it is now step 1 for apps from before 0.7.1. CONTRIBUTING.md gains a rule for migration steps: *Detect* searches `src/`, not one file, and *Converge* names the symbol as well as its template path. *App migration:* none (docs only).
 - **stack.md: "Verified against" re-dated to template 0.7.5** ([#22](https://github.com/rust-off-rails/rustoffrails/issues/22)). The table still said 2026-10-12 and listed sqlx 0.9.0 and axum-server 0.8.0. The rows the template uses now show its 0.7.5 lock (sqlx 0.9.1, axum-server 0.9.2, tokio 1.54.1, uuid 1.29.3, clap 4.6.8, rand 0.10.4, rustls 0.23.46), which `test-template.sh` builds and tests on both databases; the paragraph says which rows still come from the 2026-10-12 reference app and what the date means. The README's release steps now say to update a row when a release moves its crate to a new major or minor version. *App migration:* none (docs only; the table is orientation, not a pin).
+- **`url` 2.5.9 and `cookie` 0.18.3** (`template/app/Cargo.lock`; [#27](https://github.com/rust-off-rails/rustoffrails/pull/27)). [RUSTSEC-2026-0592](https://rustsec.org/advisories/RUSTSEC-2026-0592) (`url`) and [RUSTSEC-2026-0594](https://rustsec.org/advisories/RUSTSEC-2026-0594) (`cookie`, through axum-extra) were published after 0.7.5, and `cargo deny` fails on both. `url` 2.5.9 also rejects a SQLite URL with a Windows path in backslashes (`sqlite://C:\...` is `InvalidPort`), so the dev-dashboard part and three file-database tests now build `sqlite://C:/...` with forward slashes, which SQLite on Windows accepts. *App migration:* *Detect:* `cargo deny --locked check advisories` names either advisory, or `grep -A1 '^name = "url"$' Cargo.lock` shows 2.5.8 or older. *Converge:* `cargo update -p url -p cookie`. On Windows, if the app builds a SQLite URL from a path (`grep -rn 'sqlite://{' src tests`), add `.to_string().replace('\\', "/")` after `.display()`; the dev dashboard's is in `src/kernel/dashboard/history.rs` (`cargo offrails update-part dev-dashboard --framework $FW`). *Prove it:* `cargo deny --locked check` passes and `cargo offrails verify --fast` is green (on Windows too, if the app runs there).
 
 ## 0.7.5 (2026-11-20)
 
