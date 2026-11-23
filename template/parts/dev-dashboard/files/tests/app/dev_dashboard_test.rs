@@ -4821,7 +4821,10 @@ async fn a_damaged_or_incompatible_history_file_is_moved_aside() {
     // Another layout's file (a newer dashboard's, say).
     let other = dir.path().join("other.sqlite3");
     {
-        let url = format!("sqlite://{}?mode=rwc", other.display());
+        let url = format!(
+            "sqlite://{}?mode=rwc",
+            other.display().to_string().replace('\\', "/")
+        );
         let db = sea_orm::Database::connect(url).await.unwrap();
         db.execute_unprepared("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO meta VALUES ('schema', '99')")
             .await
