@@ -245,7 +245,11 @@ async fn concurrent_claims_on_a_sqlite_file_database_never_overlap() {
     let dir = tempfile::tempdir().unwrap();
     let url = format!(
         "sqlite://{}?mode=rwc",
-        dir.path().join("claims.sqlite3").display()
+        dir.path()
+            .join("claims.sqlite3")
+            .display()
+            .to_string()
+            .replace('\\', "/")
     );
     let db = offrails_host::kernel::db::connect(&url, 6).await.unwrap();
     Migrator::up(&db, None).await.unwrap();
