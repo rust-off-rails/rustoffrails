@@ -1,0 +1,20 @@
+name: "Bug"
+description: The installer, the offrails CLI, a generator or the template app is broken. For wrong docs, use "Doc bug"; for a bug in a part, open it in rust-off-rails/samples.
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes: { label: Framework version, description: "`offrails version`, or the first line of .offrails/VERSION", placeholder: "0.7.5" }
+    validations: { required: true }
+  - type: input
+    id: system
+    attributes: { label: System, placeholder: "macOS 26 on M2, Rust 1.92 / Ubuntu 24.04 / Windows 11" }
+  - type: textarea
+    id: what
+    attributes:
+      label: What's wrong
+      description: "What you ran, what happened, what you expected. Paste the command and its output in a code block. Remove secrets."
+    validations: { required: true }
+  - type: textarea
+    id: fix
+    attributes: { label: Cause or fix, description: "If you or your agent found it: the file and line, or a suggested change." }
