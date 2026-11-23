@@ -44,28 +44,28 @@ One crate per job. Add each one with `cargo add` (and JS packages with `pnpm add
 | CORS (any `API`) | `tower-http` feature `cors` | `new` when `API` is set | Exact origins from `APP_CORS_ORIGINS`, never `*`, no credentials ([api](guides/api.md#cors)) |
 | Testing | built-in `#[test]`/`#[tokio::test]`; dev-deps `tower` (`util`), `http-body-util`, `tempfile`, `insta` (`json`, `redactions`) | `new` | `insta` for API contract snapshots ([test-standards](guides/test-standards.md)). Runner: `cargo-nextest` |
 
-### Verified against (2026-10-12)
+### Verified against (template 0.7.5, 2026-11-20)
 
-The `bookshelf` reference app (htmx, SQLite + Postgres 18) was generated from these docs with `cargo add` and compiled, linted (`clippy -D warnings`) and tested on both databases with these resolved versions. **This table is orientation, not a pin.** Agents still `cargo add` and read `Cargo.lock`. When a resolved major/minor differs from this table, read that crate's changelog before writing code against it.
+The date says when these versions were last built and tested, not when they were current. The crates the template uses are at the versions in `template/app/Cargo.lock` for 0.7.5, which `tools/ci/test-template.sh` compiles, lints (`clippy -D warnings`) and tests on SQLite and Postgres for every release. The rest (lettre, croner, tokio-tungstenite, ts-rs, async-graphql, utoipa, argon2, object_store, GraphiQL, @scalar/api-reference) are from the `bookshelf` reference app (htmx, SQLite + Postgres 18; 2026-10-12, the API demo 2026-10-13), generated from these docs with `cargo add` and checked the same way. **This table is orientation, not a pin.** Agents still `cargo add` and read `Cargo.lock`. When a resolved major/minor differs from this table, read that crate's changelog before writing code against it.
 
 | Crate | Version | | Crate | Version |
 |-------|---------|-|-------|---------|
 | rustc / cargo | 1.99 | | sea-orm, sea-orm-migration, sea-orm-cli | 2.0.4 |
 | axum | 0.8.9 | | sea-query (via sea-orm) | 1.0.2 |
-| axum-extra | 0.12.6 | | sqlx (via sea-orm) | 0.9.0 |
+| axum-extra | 0.12.6 | | sqlx (via sea-orm) | 0.9.1 |
 | tower / tower-http | 0.5.3 / 0.7.1 | | askama | 0.16.1 |
-| tokio | 1.53.2 | | lettre | 0.11.23 |
+| tokio | 1.54.1 | | lettre | 0.11.23 |
 | serde / serde_json | 1.0.229 / 1.0.154 | | moka | 0.12.16 |
 | chrono | 0.4.45 | | croner | 4.0.1 |
-| uuid | 1.28.0 | | rand | 0.10.3 |
-| clap | 4.6.7 | | base64 | 0.23.1 |
+| uuid | 1.29.3 | | rand | 0.10.4 |
+| clap | 4.6.8 | | base64 | 0.23.1 |
 | thiserror / anyhow | 2.0.21 / 1.0.104 | | sha2 | 0.11.1 |
 | tracing / tracing-subscriber | 0.1.44 / 0.3.23 | | serde_html_form | 0.4.1 |
 | insta | 1.49.0 | | cargo-nextest, cargo-watch | latest via `cargo install --locked` |
 | tokio-tungstenite (dev, channel tests) | 0.29.0 (match axum's; `cargo add --dev tokio-tungstenite@0.29`) | | | |
 | ts-rs (inertia branch) | 12.0.1 | | | |
 | async-graphql, async-graphql-axum (api demo, 2026-10-13) | 7.2.1 | | utoipa (api demo) | 6.0.0 |
-| axum-server (`tls-rustls`, api demo) | 0.8.0 | | rustls (`aws_lc_rs`) | 0.23.45 |
+| axum-server (`tls-rustls`) | 0.9.2 | | rustls (`aws_lc_rs`) | 0.23.46 |
 | GraphiQL (CDN, dev page) | 4.1.2 | | @scalar/api-reference (CDN, dev page) | 1.74.0 |
 | argon2 (auth branch) | 0.6.0 | | object_store / bytes (auth branch) | 0.14.2 / 1.12.1 |
 

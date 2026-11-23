@@ -72,4 +72,10 @@ rm -rf "$NOJQ"
 check 0 stop-gate.sh '{"stop_hook_active":true}'                   "stop gate never loops"
 out=$(printf '{}' | CLAUDE_PROJECT_DIR="$APP" bash "$H/session-start.sh"); case "$out" in *"Rust off Rails app"*) echo "ok   session start orients the agent";; *) echo "FAIL session start"; fail=1;; esac
 outside=$(mktemp -d); printf '{"tool_input":{"command":"pkill x"}}' | CLAUDE_PROJECT_DIR="$outside" bash "$H/guard-bash.sh" >/dev/null 2>&1 && echo "ok   hooks are no-ops outside Off Rails apps" || { echo "FAIL hooks outside apps"; fail=1; }; rm -rf "$outside"
+# Drift is by content: the installer's .sha256 and the vendored VERSION line don't count (#15).
+FW1="$(mktemp -d)"; mkdir -p "$FW1/guides"; echo doc > "$FW1/guides/a.md"; echo 0.7.5 > "$FW1/VERSION"
+fp1=$(bash "$H/fingerprint.sh" "$FW1"); echo 3f9c > "$FW1/.sha256"; printf '0.7.5\nvendored 2026-11-22\n' > "$FW1/VERSION"; fp2=$(bash "$H/fingerprint.sh" "$FW1")
+echo changed > "$FW1/guides/a.md"; fp3=$(bash "$H/fingerprint.sh" "$FW1"); rm -rf "$FW1"
+[ "$fp1" = "$fp2" ] && echo "ok   fingerprint ignores .sha256 and VERSION" || { echo "FAIL fingerprint counts .sha256 or VERSION"; fail=1; }
+[ "$fp1" != "$fp3" ] && echo "ok   fingerprint sees a changed doc" || { echo "FAIL fingerprint missed a changed doc"; fail=1; }
 exit $fail

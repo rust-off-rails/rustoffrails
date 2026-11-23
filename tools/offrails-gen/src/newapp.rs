@@ -26,7 +26,7 @@ const TS_ONLY_TOKEN: &str = "{{TS modes only: \", or :5173 via Vite\"; htmx: not
 
 /// Top-level framework paths that never go into an app's `.offrails/` (generators/new.md step 1).
 /// hooks/fingerprint.sh compares by content with the same list.
-const VENDOR_EXCLUDES: [&str; 8] = [
+const VENDOR_EXCLUDES: [&str; 9] = [
     ".git",
     ".claude-plugin",
     "skills",
@@ -35,6 +35,8 @@ const VENDOR_EXCLUDES: [&str; 8] = [
     "brand",
     ".in_use",
     "media",
+    // The tarball checksum install.sh writes into ~/.offrails/<version>/: not framework content.
+    ".sha256",
 ];
 
 pub struct NewOptions {
@@ -647,6 +649,24 @@ mod tests {
             ),
             "one tagline, capitalized like brand.toml's, whatever case was typed"
         );
+    }
+
+    /// The installer's tarball checksum (`~/.offrails/<version>/.sha256`) is not vendored: the
+    /// plugin's copy has none, so the app would look drifted (#15).
+    #[test]
+    fn vendoring_skips_the_installer_checksum() {
+        let base = std::env::temp_dir().join(format!("offrails-vendor-sha-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let (fw, app) = (base.join("fw"), base.join("app"));
+        fs::create_dir_all(fw.join("guides")).unwrap();
+        fs::create_dir_all(&app).unwrap();
+        fs::write(fw.join("VERSION"), "0.7.5\n").unwrap();
+        fs::write(fw.join("guides/a.md"), "doc\n").unwrap();
+        fs::write(fw.join(".sha256"), "3f9c\n").unwrap();
+        vendor(&fw, &app, None).unwrap();
+        assert!(app.join(".offrails/guides/a.md").is_file());
+        assert!(!app.join(".offrails/.sha256").exists());
+        let _ = fs::remove_dir_all(&base);
     }
 
     /// A framework checkout is vendored from HEAD, never its working tree, and says which commit

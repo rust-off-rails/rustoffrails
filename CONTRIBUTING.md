@@ -24,6 +24,7 @@ Rust off Rails has one founding rule: **all code is written by AI** ([doctrine Â
 - Every code snippet in the docs must match code that compiled. Don't guess APIs; check the resolved version.
 - Keep the voice: terse, opinionated, written for agents.
 - Never weaken a security rule without a security review in the PR.
+- Write each **App migration** step for an app that didn't come from the current template. An app built from older guides keeps code in other files, so *Detect* searches `src/` (`grep -rn <symbol> src/`), not one file, and *Converge* names the symbol as well as its template path ("add it next to `ClientIp`, wherever the app defines it").
 - Run before opening a PR: `claude plugin validate . --strict`, and make sure every Markdown link resolves (CI checks both).
 
 ## Security issues
