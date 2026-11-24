@@ -49,7 +49,18 @@ diff -ru .offrails/template/app "$FW/template/app"     # what the release change
 diff -ru -x target -x .git -x .offrails -x storage "$FW/template/app" .   # the app against the new template: long, the app has grown
 ```
 
-Read the first one change by change: each is a candidate slice for step 7 (a fixed header, a new test, a hardened default). Use the second only to locate the app's version of each changed file. **It's a reference, never an overwrite:** the app's files have diverged on purpose (its routes, models, layout, copy, renamed crate), so never copy a template file over an app file. Port each change into the app's code, with its test, and classify it like any other change (step 4). Template tokens (`offrails_app`, `Offrails App`) are the app's crate and product name in the app.
+Read the first one change by change: each is a candidate slice for step 7 (a fixed header, a new test, a hardened default). Use the second only to locate the app's version of each changed file.
+
+**An app from before 0.7.1 (or one whose template diff is mostly renames):** the first diff is empty, because `.offrails/` has no `template/`, and the second shows every file that carries `offrails_app` or `Offrails App` as changed. Generate a reference app of the new release with the app's own names and parts, outside the app, and diff against that instead:
+
+```sh
+REF="$(mktemp -d)/ref"
+cargo run -q --manifest-path "$FW/tools/offrails-gen/Cargo.toml" --target-dir "target/offrails-gen-$(cat "$FW/VERSION")" -- \
+  new "$REF" <crate_name> "<Display Name>" --parts <the app's parts, comma-separated> --framework "$FW" --no-git --offline
+diff -ru -x target -x .git -x .offrails -x storage -x Cargo.lock "$REF" .   # what is left is the app's own code and what the release changed
+```
+
+`<crate_name>` is the `name` in the app's `Cargo.toml` (underscores), and `<Display Name>` is `APP_NAME` in `src/config.rs`. Delete `$REF` when the upgrade is done. **It's a reference, never an overwrite:** the app's files have diverged on purpose (its routes, models, layout, copy, renamed crate), so never copy a template file over an app file. Port each change into the app's code, with its test, and classify it like any other change (step 4). Template tokens (`offrails_app`, `Offrails App`) are the app's crate and product name in the app.
 
 ## 4. Reconcile, don't re-create
 
@@ -101,7 +112,7 @@ The target directory is the release's own (`target/offrails-gen-0.7.3`), never `
 
 Each slice must be green under the [Definition of Done](../workflow.md#definition-of-done) before the next one.
 
-**A step applies only where its *Detect* matches.** Many steps are for one kind of app: accounts, live regions, a development pending-migrations page, a CSS banner, channels. Run the detect first; a step for a feature the app doesn't have is **n/a**, listed as such in the plan with the reason, not built "to match". Where a step's proof needs something the app lacks, use the alternative it names (no accounts: `run.sh a11y` instead of `run.sh login`; its preflight still fails on an untrusted certificate). A detect that would match every app for a change that only some need is a changelog bug: apply what clearly applies, and say so in your report. Log `YYYY-MM-DD: upgraded Off Rails <old> → <new>` and each deviation in `docs/decisions.md`.
+**A step applies only where its *Detect* matches.** Many steps are for one kind of app: accounts, live regions, a development pending-migrations page, a CSS banner, channels. Run the detect first; a step for a feature the app doesn't have is **n/a**, listed as such in the plan with the reason, not built "to match". Where a step's proof needs something the app lacks, use the alternative it names (no accounts: `run.sh a11y` instead of `run.sh login`; its preflight still fails on an untrusted certificate). A detect that would match every app for a change that only some need is a changelog bug: apply what clearly applies, and say so in your report. Log one line per release the upgrade crosses, `YYYY-MM-DD: upgraded to framework <version>` (an upgrade from 0.7.0 to 0.7.3 writes three, for 0.7.1, 0.7.2 and 0.7.3; the CHANGELOG's *Prove it* steps look for that release's line), with the steps that didn't apply and why in parentheses, and each deviation as its own line in `docs/decisions.md`.
 
 ## 7b. Offer the parts
 
@@ -144,7 +155,7 @@ Skip the step when `docs/decisions.md` records an earlier answer (unless the par
   - **`n/a` threat rows.** *Detect:* `grep -nE '^\|[^|]*\|[[:space:]]*(n/a|N/A|none|—)[[:space:]]*\|' product/features/*.md`, or `[security] … says "n/a" with no reason` / `names no test`. *Converge:* a STRIDE category that can't apply becomes `| <Category> | n/a: <why it can't happen here> | — | — |`; a row that names a real threat gets its test written and named, never `—`.
   - **`.env.example` gaps.** *Detect:* `[env] .env.example is missing variable(s)` (the old DoD grep only matched `var("…")`, so variables read through `parse("X", …)` or another helper were never checked). *Converge:* add each as `NAME=value` or `# NAME=value` with a comment ([config](../guides/config.md#envexample)); a `"SCREAMING_SNAKE"` literal in `src/config.rs` that isn't an env var gets a trailing `// not an env var`.
 - **Reconcile `docs/decisions.md`.** Read every line. For each decision this release makes obsolete (a workaround for a bug the release fixes, a deviation the framework now adopts, a limit the release resizes), add a line that supersedes it by date (`YYYY-MM-DD: supersedes 2026-10-04 (stall watchdog): 0.6.0 serves HTTP/2, removed the watchdog`) and remove the code it justified in the same slice. Never edit or delete the old line ([workflow](../workflow.md#decisions)). Keep a workaround only if you can still reproduce its evidence on the new release, and say so in the superseding line.
-- Copy the app header's `NEVER` list from [`blueprints/AGENTS.md`](../blueprints/AGENTS.md) into the app's `AGENTS.md` when it's missing or older.
+- Reconcile the app's `AGENTS.md` with [`blueprints/AGENTS.md`](../blueprints/AGENTS.md), every section below the header: the `NEVER` list, *You are an agent working on a Rust off Rails app*, **Quick commands** (releases add commands such as `verify`, `prove`, `brand`, `snippets`, `g` and `list-parts`) and **Post-upgrade checks**. Take the blueprint's text where the app's is older; keep the header's values (`APP`, `FRONTEND_MODE`, `ACCOUNTS`, `EMAIL`…; `FRAMEWORK` names the new release) and the App-specific notes, which are the app's own.
 
 - Grep the app (templates, views, `web/src`, docs, tests) for the old version string. Anything that displays the framework version must read `.offrails/VERSION`, never a literal.
 - Run the app's own post-upgrade checks (its `AGENTS.md`, "Post-upgrade checks"). If the app's `AGENTS.md` predates that section, add it from [`blueprints/AGENTS.md`](../blueprints/AGENTS.md) and list anything this upgrade taught you to verify next time.
