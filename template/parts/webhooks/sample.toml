@@ -1,0 +1,315 @@
+# samples/webhooks/sample.toml: the format is samples/FORMAT.md.
+name = "webhooks"
+version = "0.7.0"
+summary = "Signed inbound webhooks: POST /webhooks/{provider} verifies the HMAC over the raw body (GitHub and Stripe schemes), refuses stale timestamps, stores each event once so a replay is a no-op, and does the work in a job"
+depends_on = ["jobs"]
+extracted_from = "Rust off Rails apps"
+
+# Run in the app root, one per line, never with a version (cargo add picks it; read Cargo.lock).
+crates = [
+  "hmac",
+  "constant_time_eq",
+]
+
+# Every file under files/ is copied to the same path in the app.
+
+[[wire]]
+file = "src/kernel/mod.rs"
+anchor = "kernel mods"
+text = '''
+pub mod webhooks;
+'''
+
+[[wire]]
+file = "src/models/mod.rs"
+anchor = "model mods"
+text = '''
+pub mod webhook_event;
+'''
+
+[[wire]]
+file = "src/controllers/mod.rs"
+anchor = "controller mods"
+text = '''
+pub mod webhooks;
+'''
+
+[[wire]]
+file = "src/jobs/mod.rs"
+anchor = "worker mods"
+text = '''
+pub mod process_webhook;
+pub mod prune_webhook_events;
+'''
+
+[[wire]]
+file = "src/jobs/mod.rs"
+anchor = "worker dispatch"
+text = '''
+process_webhook::ProcessWebhookJob::NAME => {
+    run::<process_webhook::ProcessWebhookJob>(&state, args, &job).await
+}
+prune_webhook_events::PruneWebhookEventsJob::NAME => {
+    run::<prune_webhook_events::PruneWebhookEventsJob>(&state, args, &job).await
+}
+'''
+
+[[wire]]
+file = "src/jobs/mod.rs"
+anchor = "worker config"
+text = '''
+process_webhook::ProcessWebhookJob::NAME => config::<process_webhook::ProcessWebhookJob>(),
+prune_webhook_events::PruneWebhookEventsJob::NAME => {
+    config::<prune_webhook_events::PruneWebhookEventsJob>()
+}
+'''
+
+[[wire]]
+file = "src/jobs/mod.rs"
+anchor = "worker names"
+text = '''
+process_webhook::ProcessWebhookJob::NAME,
+prune_webhook_events::PruneWebhookEventsJob::NAME,
+'''
+
+[[wire]]
+file = "src/jobs/recurring.rs"
+anchor = "recurring"
+text = '''
+// webhooks: finished events are deleted after `prune_webhook_events::KEEP_DAYS`.
+Recurring {
+    key: "prune_webhook_events",
+    cron: "17 3 * * *",
+    job: || {
+        crate::jobs::Worker::into_job(crate::jobs::prune_webhook_events::PruneWebhookEventsJob)
+    },
+},
+'''
+
+[[wire]]
+file = "migration/src/lib.rs"
+anchor = "migration mods"
+text = '''
+mod m20261024_000100_create_webhook_events;
+'''
+
+[[wire]]
+file = "migration/src/lib.rs"
+anchor = "migrations"
+text = '''
+Box::new(m20261024_000100_create_webhook_events::Migration),
+'''
+
+[[wire]]
+file = "src/config.rs"
+anchor = "config fields"
+text = '''
+/// Inbound webhook signing secrets: `APP_WEBHOOK_<PROVIDER>_SECRET`.
+pub webhooks: WebhooksConfig,
+'''
+
+[[wire]]
+file = "src/config.rs"
+anchor = "config debug"
+text = '''
+d.field("webhooks", &self.webhooks);
+'''
+
+[[wire]]
+file = "src/config.rs"
+anchor = "config parse"
+text = '''
+let webhooks = WebhooksConfig::from_env()?;
+'''
+
+[[wire]]
+file = "src/config.rs"
+anchor = "config init"
+text = '''
+webhooks,
+'''
+
+[[wire]]
+file = "src/config.rs"
+anchor = "config test"
+text = '''
+webhooks: WebhooksConfig::none(),
+'''
+
+[[wire]]
+file = "src/config.rs"
+anchor = "config sections"
+text = '''
+/// Inbound webhook signing secrets, one per provider (.offrails/guides/security.md#csrf). A
+/// provider without a secret has no route.
+#[derive(Clone, Default)]
+pub struct WebhooksConfig {
+    secrets: Vec<(crate::kernel::webhooks::Provider, WebhookSecret)>,
+}
+
+/// A signing secret. Its Debug never shows it.
+#[derive(Clone)]
+struct WebhookSecret(String);
+
+impl fmt::Debug for WebhookSecret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[redacted]")
+    }
+}
+
+// SECURITY: Debug is an allowlist: it names which providers are configured and never a secret
+// (test: webhook_secrets_never_reach_debug_output).
+impl fmt::Debug for WebhooksConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WebhooksConfig")
+            .field("providers", &self.providers())
+            .finish()
+    }
+}
+
+impl WebhooksConfig {
+    /// APP: the shortest secret accepted. `openssl rand -hex 32` makes 64 characters.
+    pub const MIN_SECRET_LEN: usize = 16;
+
+    /// No provider configured: no webhook route answers. What the test config uses.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// `APP_WEBHOOK_GITHUB_SECRET`, `APP_WEBHOOK_STRIPE_SECRET`, one per provider.
+    pub fn from_env() -> anyhow::Result<Self> {
+        Self::from_lookup(|name| std::env::var(name).ok())
+    }
+
+    /// `from_env` over any lookup (tests pass a closure instead of touching the environment).
+    pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> anyhow::Result<Self> {
+        let mut secrets = Vec::new();
+        let mut invalid: Vec<String> = Vec::new();
+        for provider in crate::kernel::webhooks::Provider::ALL {
+            let name = provider.env_var();
+            let Some(value) = get(&name).map(|v| v.trim().to_owned()).filter(|v| !v.is_empty())
+            else {
+                continue;
+            };
+            if value.len() < Self::MIN_SECRET_LEN {
+                invalid.push(format!(
+                    "{name} (at least {} characters)",
+                    Self::MIN_SECRET_LEN
+                ));
+            } else {
+                secrets.push((provider, WebhookSecret(value)));
+            }
+        }
+        if !invalid.is_empty() {
+            anyhow::bail!("invalid env vars: {} (see .env.example)", invalid.join(", "));
+        }
+        Ok(Self { secrets })
+    }
+
+    /// Secrets for the given providers (tests).
+    pub fn with(secrets: &[(crate::kernel::webhooks::Provider, &str)]) -> Self {
+        Self {
+            secrets: secrets
+                .iter()
+                .map(|(provider, secret)| (*provider, WebhookSecret((*secret).to_owned())))
+                .collect(),
+        }
+    }
+
+    /// The provider's signing secret, when configured.
+    pub fn secret(&self, provider: crate::kernel::webhooks::Provider) -> Option<&[u8]> {
+        self.secrets
+            .iter()
+            .find(|(p, _)| *p == provider)
+            .map(|(_, secret)| secret.0.as_bytes())
+    }
+
+    /// The slugs of the configured providers.
+    pub fn providers(&self) -> Vec<&'static str> {
+        self.secrets.iter().map(|(p, _)| p.slug()).collect()
+    }
+}
+
+'''
+
+[[wire]]
+file = "src/routes.rs"
+anchor = "routes"
+text = '''
+// Inbound webhooks (webhooks sample): the provider's signature is the authentication. No cookie,
+// no session. WHY: `{id}` is the provider slug; the host's route sweeps fill `{id}` in.
+app = app.route("/webhooks/{id}", axum::routing::post(crate::controllers::webhooks::receive));
+'''
+
+[[wire]]
+file = "src/routes.rs"
+anchor = "paths"
+text = '''
+/// Where a provider is told to send its webhooks (`provider` is `github`, `stripe`).
+pub fn webhook(provider: &str) -> String {
+    format!("/webhooks/{provider}")
+}
+'''
+
+[[wire]]
+file = "src/routes.rs"
+anchor = "routes table"
+text = '''
+("POST", "/webhooks/{id}",               "webhooks::receive", Access::Public),
+'''
+
+[[wire]]
+file = ".env.example"
+anchor = "env"
+text = '''
+# --- webhooks (inbound; .offrails/guides/security.md#csrf) ---
+# A provider without a secret has no route (404). Use the signing secret the provider shows you.
+# APP_WEBHOOK_GITHUB_SECRET=      # POST /webhooks/github, header X-Hub-Signature-256 (openssl rand -hex 32)
+# APP_WEBHOOK_STRIPE_SECRET=      # POST /webhooks/stripe, header Stripe-Signature (whsec_...)
+'''
+
+[[wire]]
+file = "compose.yaml"
+anchor = "compose env"
+text = '''
+APP_WEBHOOK_GITHUB_SECRET: ${APP_WEBHOOK_GITHUB_SECRET:-}
+APP_WEBHOOK_STRIPE_SECRET: ${APP_WEBHOOK_STRIPE_SECRET:-}
+'''
+
+[[wire]]
+file = "tests/app/main.rs"
+anchor = "test mods"
+text = '''
+mod webhooks_test;
+'''
+
+[[wire]]
+file = "tests/app/support.rs"
+anchor = "test support"
+text = '''
+// ----- webhooks -----
+
+/// A server-to-server POST with a raw body, as a webhook sender makes it: no cookies, no
+/// `Sec-Fetch-Site`, no `Origin`, only the headers given.
+pub async fn post_raw(&self, path: &str, headers: &[(&str, &str)], body: &[u8]) -> TestResponse {
+    let mut builder = Request::builder().method(Method::POST).uri(path);
+    for (name, value) in headers {
+        builder = builder.header(*name, *value);
+    }
+    let request = builder.body(Body::from(body.to_vec())).expect("request");
+    let response = self
+        .router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("infallible");
+    let (parts, body) = response.into_parts();
+    let bytes = body.collect().await.expect("body").to_bytes();
+    TestResponse {
+        status: parts.status,
+        headers: parts.headers,
+        body: String::from_utf8_lossy(&bytes).into_owned(),
+    }
+}
+
+'''

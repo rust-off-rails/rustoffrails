@@ -74,6 +74,7 @@ The agent decides which parts the app needs from what the human said and the spe
 | `ACCOUNTS: password` (or `password invite`) | `auth-password` | argon2id, verification, reset |
 | Two-factor, admin accounts that guard money or personal data | `auth-totp` | Authenticator-app codes with recovery codes |
 | Chat, presence ("who's online"), typing indicators, multiplayer, live updates pushed to other users | `realtime` | Channels over WebSocket with SSE and long-poll fallbacks |
+| Another service posts events to the app: payments (Stripe), GitHub, any HMAC-signed webhook | `webhooks` | Signature checked over the raw body, replays stored once, the work done in a job; brings `jobs` |
 | None of the above (a content site, an internal read-only tool) | `dev-dashboard` only | The base already has `/dev`, the cache, security headers and the theme switch |
 
 When the human wants to see what a part is before deciding, point them at **<https://github.com/rust-off-rails/samples>**: its README has screenshots of every screen, light and dark. When the product later grows a need, add the part then: `cargo offrails add-part <name>`. Before hand-writing a mailer, a queue, sessions or a socket layer, run `cargo offrails list-parts`: if a part does it, add the part ([workflow](../workflow.md#when-the-product-grows-a-need-add-the-part)).
