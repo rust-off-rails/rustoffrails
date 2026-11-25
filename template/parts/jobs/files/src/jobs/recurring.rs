@@ -57,6 +57,7 @@ pub const SCHEDULE: &[Recurring] = &[
             .into_job()
         },
     },
+    // samples: recurring
 ];
 
 #[cfg(test)]

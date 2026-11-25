@@ -130,6 +130,7 @@ Skip the step when `docs/decisions.md` records an earlier answer (unless the par
    | Jobs dashboard | `grep -rln '"/admin/jobs' src` | `jobs-dashboard` |
    | Accounts | the `ACCOUNTS:` header line isn't `none`; passwords: `grep -rln password_digest src/models`; magic links: `ls src/models/login_link.rs`; two-factor: `grep -rli totp src` | `auth-core` + `auth-password` / `auth-magic-link`, `auth-totp` |
    | Realtime | `ls -d src/channels src/kernel/channels.rs src/kernel/pubsub.rs` | `realtime` |
+   | Webhooks | `grep -rn '/webhooks/' src` | `webhooks` |
    | Dev dashboard | `grep -rn '"/dev/dashboard' src` (usually nothing: it's new; recommend it for every app) | `dev-dashboard` |
 
 2. **Compare honestly.** For each area found, read the sample's README (first section and *Adapting it*) and look at what the app's version already does. Write one or two sentences per area: what the sample would add **to this app**, and what adopting costs (the files it replaces, tables to reconcile, new routes, more code to own). Where the app already does it, say so, and don't offer what it doesn't need. The [samples table](../guides/samples.md#the-samples) has the headline features: a mailbox with HTML, text and source views and a 320 px phone lint; jobs on the database with a dashboard that groups errors by root cause; accounts with TOTP, recovery codes, magic link + code and an account security page; channels with presence and authorization on every join; a LiveDashboard-style dev dashboard with traces, SQL with N+1 detection, a log tail and a routes explorer.

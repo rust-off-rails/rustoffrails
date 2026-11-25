@@ -14,6 +14,8 @@ jobs:
         run: python3 tools/ci/check-links.py
       - name: Plugin hooks behave
         run: bash tools/ci/test-hooks.sh
+      - name: template/parts/ is exactly the samples commit in template/parts/SOURCE (#28)
+        run: sh tools/ci/check-parts-source.sh
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -34,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: shellcheck (installer, offrails command, offrails-check, generators' wrappers, release + CI scripts)
-        run: shellcheck -s sh install.sh tools/offrails tools/offrails-check tools/new-app.sh tools/sync-parts.sh tools/release/release.sh tools/ci/test-install.sh tools/ci/test-offrails-check.sh tools/ci/test-template.sh tools/ci/memory-budget.sh tools/browser-smoke/run.sh
+        run: shellcheck -s sh install.sh tools/offrails tools/offrails-check tools/new-app.sh tools/sync-parts.sh tools/ci/check-parts-source.sh tools/release/release.sh tools/ci/test-install.sh tools/ci/test-offrails-check.sh tools/ci/test-template.sh tools/ci/memory-budget.sh tools/browser-smoke/run.sh
       - name: offrails-check passes a complete app and fails each broken fixture with its message
         run: sh tools/ci/test-offrails-check.sh
       - name: Install into this runner and clean containers (ubuntu:24.04, debian:trixie-slim)

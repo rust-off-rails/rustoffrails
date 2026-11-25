@@ -59,7 +59,7 @@ By hand, in the app root:
 
 ## Adapting it
 
-- **Add a worker.** A file in `src/jobs/` with a struct (ids, never records or secrets) and `impl Worker` (`NAME` is permanent; set `QUEUE`, `MAX_ATTEMPTS`, `TIMEOUT` to the work), then one arm in `dispatch`, `worker_config` and `WORKERS` (`// APP:` in `src/jobs/mod.rs`). Enqueue inside the transaction that creates its data: `jobs::enqueue(&txn, SendReceiptJob { order_id }).await?`. Test it with `app.perform_job(…)` and the flow with `app.drain_jobs()`.
+- **Add a worker.** A file in `src/jobs/` with a struct (ids, never records or secrets) and `impl Worker` (`NAME` is permanent; set `QUEUE`, `MAX_ATTEMPTS`, `TIMEOUT` to the work), then one arm in `dispatch`, `worker_config` and `WORKERS` (`// APP:` in `src/jobs/mod.rs`). A sample that ships a worker (webhooks does) registers it at the `worker mods`, `worker dispatch`, `worker config` and `worker names` anchors in the same file, and a recurring entry at `recurring` in `src/jobs/recurring.rs`. Enqueue inside the transaction that creates its data: `jobs::enqueue(&txn, SendReceiptJob { order_id }).await?`. Test it with `app.perform_job(…)` and the flow with `app.drain_jobs()`.
 - **Add a queue or change limits.** `APP_QUEUES=default:10,mailers:5` per process (`JobsConfig::DEFAULT_QUEUES` is the fallback, `// APP:`); `app worker --queues reports:2` for a dedicated process.
 - **Rate-limit a queue.** Add `:<count>/<period>`: `APP_QUEUES=webhooks:3:30/1m` starts at most 30 jobs a minute across every node, 3 at a time per node.
 - **Add a cron entry.** A `Recurring { key, cron, job }` in `SCHEDULE` (`src/jobs/recurring.rs`, `// APP:`). `key` is permanent; `cron` is five fields in UTC; `recurring::tests` fails on a bad expression or an unregistered worker.

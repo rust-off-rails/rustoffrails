@@ -4,7 +4,9 @@
 //!
 //! Adding a worker: a file in `src/jobs/`, a `pub mod` line below, and one arm in **both**
 //! `dispatch` and `worker_config`. A worker missing from `dispatch` is discarded as
-//! "unknown worker" (test: every_registered_worker_dispatches).
+//! "unknown worker" (test: every_registered_worker_dispatches). A sample that ships a worker
+//! registers it at the four `samples:` anchor comments below (`worker mods`, `worker dispatch`,
+//! `worker config`, `worker names`).
 
 use std::{future::Future, sync::Arc, time::Duration};
 
@@ -19,6 +21,7 @@ pub mod cleanup;
 pub mod cli;
 pub mod examples;
 pub mod recurring;
+// samples: worker mods
 
 pub use crate::kernel::jobs::{
     Batch, DispatchFn, Inserted, JobBuilder, JobDefaults, JobInfo, Outcome, Unique, UniqueStates,
@@ -100,6 +103,7 @@ pub async fn dispatch(
         ExportReportJob::NAME => run::<ExportReportJob>(&state, args, &job).await,
         DeliverWebhookJob::NAME => run::<DeliverWebhookJob>(&state, args, &job).await,
         ReportBatchDoneJob::NAME => run::<ReportBatchDoneJob>(&state, args, &job).await,
+        // samples: worker dispatch
         other => Ok(Outcome::Discard(format!("unknown worker: {other}"))),
     }
 }
@@ -112,6 +116,7 @@ pub fn worker_config(worker: &str) -> WorkerConfig {
         ExportReportJob::NAME => config::<ExportReportJob>(),
         DeliverWebhookJob::NAME => config::<DeliverWebhookJob>(),
         ReportBatchDoneJob::NAME => config::<ReportBatchDoneJob>(),
+        // samples: worker config
         _ => WorkerConfig::default(),
     }
 }
@@ -122,6 +127,7 @@ pub const WORKERS: &[&str] = &[
     ExportReportJob::NAME,
     DeliverWebhookJob::NAME,
     ReportBatchDoneJob::NAME,
+    // samples: worker names
 ];
 
 fn config<W: Worker>() -> WorkerConfig {
