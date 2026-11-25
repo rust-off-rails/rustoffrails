@@ -25,6 +25,8 @@ Rust off Rails has one founding rule: **all code is written by AI** ([doctrine Â
 - Keep the voice: terse, opinionated, written for agents.
 - Never weaken a security rule without a security review in the PR.
 - Write each **App migration** step for an app that didn't come from the current template. An app built from older guides keeps code in other files, so *Detect* searches `src/` (`grep -rn <symbol> src/`), not one file, and *Converge* names the symbol as well as its template path ("add it next to `ClientIp`, wherever the app defines it").
+- In a CHANGELOG entry, cite a samples change by its PR (`rust-off-rails/samples#2`), not its commit hash: hashes change when a branch is rebased.
+- CI runs the template's suite on Postgres and SQLite on Linux (`template`), and on SQLite only on macOS and Windows (`template-os`): production Postgres runs on Linux, and the other OSes are where people develop.
 - Run before opening a PR: `claude plugin validate . --strict`, and make sure every Markdown link resolves (CI checks both).
 
 ## Security issues
