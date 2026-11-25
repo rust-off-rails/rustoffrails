@@ -34,7 +34,9 @@ OUT=${OUT:-$(mktemp -d)}
 mkdir -p "$OUT"
 
 if [ "$WORKTREE" = 0 ] && [ -n "$(git status --porcelain)" ]; then
-  echo "release: working tree is dirty; commit first (or use --build-only --worktree for tests)" >&2
+  echo "release: working tree is dirty; commit first (or use --build-only --worktree for tests)." >&2
+  echo "  Untracked local files (such as .claude/) count too; release from a clean worktree:" >&2
+  echo "    git worktree add --detach ../rel HEAD && cd ../rel && tools/release/release.sh" >&2
   exit 1
 fi
 plugin_version=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' .claude-plugin/plugin.json | head -n1)
@@ -72,13 +74,22 @@ echo "Built Rust off Rails $VERSION in $OUT:"
 for f in rustoffrails.tar.gz install.sh checksums.txt; do printf '  %s  %s bytes\n' "$f" "$(wc -c <"$OUT/$f" | tr -d ' ')"; done
 [ "$BUILD_ONLY" = 1 ] && exit 0
 
+# The site keeps serving the previous release until it is updated (#25).
+website_steps() {
+  echo "Then update rustoffrails.org, which serves /install.sh, /docs, /changelog and the MCP answers"
+  echo "from its own copy of the release:"
+  echo "  1. re-vendor .offrails/ in the website repo from $TAG"
+  echo "  2. bin/releases add $VERSION"
+  echo "  3. deploy, then check https://rustoffrails.org/install.sh and /changelog name $VERSION"
+}
+
 notes=$(awk -v v="$VERSION" '$0 ~ "^## "v" " {f=1; next} f && /^## / {exit} f' CHANGELOG.md)
 [ -n "$notes" ] || { echo "release: CHANGELOG.md has no '## $VERSION (…)' section" >&2; exit 1; }
 if [ "$DRY" = 1 ]; then
   echo "Dry run. Would run:"
   echo "  git tag -a $TAG -m 'Rust off Rails $VERSION' && git push origin $TAG"
   echo "  gh release create $TAG $OUT/rustoffrails.tar.gz $OUT/install.sh $OUT/checksums.txt --repo $REPO --title 'Rust off Rails $VERSION' --notes <CHANGELOG section, $(printf '%s' "$notes" | wc -l | tr -d ' ') lines>"
-  echo "  then publish install.sh at https://rustoffrails.org/install.sh (the website serves the latest release's copy)"
+  website_steps
   exit 0
 fi
 git tag -a "$TAG" -m "Rust off Rails $VERSION"
@@ -86,3 +97,4 @@ git push origin "$TAG"
 printf '%s\n' "$notes" | gh release create "$TAG" "$OUT/rustoffrails.tar.gz" "$OUT/install.sh" "$OUT/checksums.txt" \
   --repo "$REPO" --title "Rust off Rails $VERSION" --notes-file -
 echo "Released $TAG: https://github.com/$REPO/releases/tag/$TAG"
+website_steps

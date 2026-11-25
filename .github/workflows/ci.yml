@@ -3,10 +3,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, so a crate release that breaks a part or snippet fails here before anyone pushes (#20).
+  # GitHub notifies whoever last changed this schedule when a scheduled run fails.
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   docs-and-plugin:
+    if: github.event_name != 'schedule'   # changes only with the repo
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -22,6 +28,7 @@ jobs:
       - name: The boosted-navigation smoke catches a button that is dead after a boosted link (the runner's Chrome)
         run: node tools/browser-smoke/selftest-boosted.mjs
   secrets:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,6 +37,7 @@ jobs:
       - name: gitleaks (full history)
         run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --no-banner --redact
   installer:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,6 +47,13 @@ jobs:
         run: sh tools/ci/test-offrails-check.sh
       - name: Install into this runner and clean containers (ubuntu:24.04, debian:trixie-slim)
         run: tools/ci/test-install.sh
+  installer-macos:              # install.sh with the tools a new user's Mac has (#24)
+    if: github.event_name != 'schedule'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install into this runner with the system openssl, curl and shasum first on PATH (no Docker, so no containers)
+        run: PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" tools/ci/test-install.sh
   template:                     # the app template and every part, on both databases (tools/ci/test-template.sh)
     # One job per target of test-template.sh: each generates its own apps, so they run side by side
     # (about 20 minutes instead of 70 in one job).
@@ -112,6 +127,4 @@ jobs:
           test -z "$(git status --porcelain)"
       - name: Tests (SQLite)
         working-directory: ${{ runner.temp }}/gen-app
-        # One retry: two dev-dashboard tests share on-disk state under a parallel run (a samples bug;
-        # the template job allows the retry for those two names only).
-        run: cargo nextest run --no-fail-fast --retries 1
+        run: cargo nextest run --no-fail-fast
